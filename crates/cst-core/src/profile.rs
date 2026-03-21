@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use crate::hooks::ProfileHooks;
 use crate::platform;
 
 /// Authentication type for a profile.
@@ -64,6 +65,9 @@ pub struct Profile {
     /// Template this profile was created from, if any.
     #[serde(default)]
     pub template: Option<String>,
+    /// Pre/post switch lifecycle hooks.
+    #[serde(default)]
+    pub hooks: ProfileHooks,
 }
 
 impl Profile {
@@ -121,6 +125,7 @@ impl ProfileManager {
             color: String::new(),
             created_at: Utc::now(),
             template: None,
+            hooks: ProfileHooks::default(),
         };
         profile.save(&dir)?;
         // Create auth subdirectory

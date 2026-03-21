@@ -1,8 +1,8 @@
 use anyhow::Result;
 use cst_core::shell::{env_exports, parse_profile_session, shell_init_code, ShellKind};
-use cst_core::platform;
-use cst_core::merge;
-use cst_core::auth;
+use cst_core::{platform, merge};
+use cst_core::env_overlay::EnvOverlay;
+use cst_core::profile::Profile;
 use std::collections::HashMap;
 
 pub fn shell_init(shell_arg: Option<String>) -> Result<()> {
@@ -36,7 +36,11 @@ pub fn env_cmd(profile_session: &str) -> Result<()> {
         let profile_toml = platform::profile_dir(&profile).join("profile.toml");
         if profile_toml.exists() {
             let contents = std::fs::read_to_string(&profile_toml)?;
-            let p: cst_core::profile::Profile = toml::from_str(&contents)?;
+            let p: Profile = toml::from_str(&contents)?;
+
+            // Fire pre-switch-in hook (non-fatal)
+            let _ = p.hooks.run_pre_switch_in();
+
             match p.auth_type {
                 cst_core::profile::AuthType::Api => {
                     // Load key from keychain (slot 1 by default)
@@ -81,7 +85,16 @@ pub fn env_cmd(profile_session: &str) -> Result<()> {
                     let _ = cst_core::auth::oauth::deactivate();
                 }
             }
+
+            // Fire post-switch-in hook (non-fatal)
+            let _ = p.hooks.run_post_switch_in();
         }
+    }
+
+    // Load per-session env.toml overlay
+    if session_dir.exists() {
+        let overlay = EnvOverlay::load(&session_dir)?;
+        vars.extend(overlay.env);
     }
 
     // Run settings merge if session dir exists

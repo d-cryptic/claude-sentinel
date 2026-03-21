@@ -5,6 +5,8 @@
 
 pub mod auth;
 pub mod config;
+pub mod env_overlay;
+pub mod hooks;
 pub mod merge;
 pub mod mcp;
 pub mod platform;
