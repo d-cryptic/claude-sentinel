@@ -2,7 +2,7 @@
 members = [
     "crates/cst-core",
     "crates/cst-cli",
-    # "apps/desktop/src-tauri",  # added when Tauri app is set up
+    "apps/desktop/src-tauri",
 ]
 resolver = "2"
 

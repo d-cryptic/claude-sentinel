@@ -1,0 +1,52 @@
+{
+  "productName": "Claude Sentinel",
+  "identifier": "io.github.d-cryptic.claude-sentinel",
+  "version": "0.1.0",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run build"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "Claude Sentinel",
+        "width": 960,
+        "height": 680,
+        "minWidth": 800,
+        "minHeight": 560,
+        "resizable": true,
+        "center": true,
+        "decorations": true,
+        "visible": false,
+        "label": "main"
+      }
+    ],
+    "trayIcon": {
+      "id": "main",
+      "iconPath": "icons/tray-icon.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "minimumSystemVersion": "10.13",
+      "signingIdentity": null
+    }
+  }
+}
