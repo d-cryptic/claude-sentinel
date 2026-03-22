@@ -1,12 +1,13 @@
 //! `cst remaining` — show quota usage, estimated time to reset, and token counts.
 //!
-//! Reads the auto-switch scheduler for known rate-limit timers,
-//! and aggregates SessionStats across all sessions of the current profile.
+//! Token counts are read from `history.jsonl` (live, parsed on the fly) when
+//! available, falling back to the cached `stats.json` values.
 
 use anyhow::Result;
 use cst_core::{
     auto_switch::scheduler::SchedulerState,
     config::GlobalConfig,
+    history_parser,
     platform,
     profile::ProfileManager,
     session::SessionManager,
@@ -31,12 +32,22 @@ pub fn remaining() -> Result<()> {
     let session_dir = platform::session_dir(profile, session);
     let stats = SessionStats::load(&session_dir).unwrap_or_default();
 
-    println!("── Token Usage (current session) ──────────────────────────");
-    println!("  Tokens in   : {}", format_tokens(stats.tokens_in));
-    println!("  Tokens out  : {}", format_tokens(stats.tokens_out));
-    println!("  Total       : {}", format_tokens(stats.tokens_in + stats.tokens_out));
-    if stats.estimated_cost_usd > 0.0 {
-        println!("  Est. cost   : ${:.4}", stats.estimated_cost_usd);
+    // Prefer live history.jsonl counts; fall back to stats.json.
+    let claude_dir = platform::claude_config_dir(profile, session);
+    let live = history_parser::parse_tokens(&claude_dir.join("history.jsonl")).ok();
+    let (tokens_in, tokens_out, cost) = if let Some(h) = &live {
+        (h.input_tokens, h.output_tokens, h.estimated_cost_usd())
+    } else {
+        (stats.tokens_in, stats.tokens_out, stats.estimated_cost_usd)
+    };
+    let live_label = if live.is_some() { " (live)" } else { "" };
+
+    println!("── Token Usage (current session){} ──────────────────────────", live_label);
+    println!("  Tokens in   : {}", format_tokens(tokens_in));
+    println!("  Tokens out  : {}", format_tokens(tokens_out));
+    println!("  Total       : {}", format_tokens(tokens_in + tokens_out));
+    if cost > 0.0 {
+        println!("  Est. cost   : ${:.4}", cost);
     }
     println!("  Rate limits : {}", stats.rate_limit_hits);
     if let Some(last) = stats.last_used {
