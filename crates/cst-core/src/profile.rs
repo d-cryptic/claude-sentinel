@@ -130,8 +130,6 @@ impl ProfileManager {
         profile.save(&dir)?;
         // Create auth subdirectory
         std::fs::create_dir_all(dir.join("auth"))?;
-        // Create default session directory
-        std::fs::create_dir_all(dir.join("sessions").join("default"))?;
         Ok(profile)
     }
 
