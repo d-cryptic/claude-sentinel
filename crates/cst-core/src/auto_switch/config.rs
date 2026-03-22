@@ -26,6 +26,36 @@ pub struct AutoSwitchConfig {
     /// Optional time-based schedule section.
     #[serde(default)]
     pub schedule: Option<Schedule>,
+
+    /// Optional smart round-robin configuration.
+    #[serde(default)]
+    pub round_robin: Option<RoundRobin>,
+}
+
+/// Smart round-robin: distribute usage across a pool of profiles to maximise
+/// total uptime before any single profile hits its quota.
+///
+/// The daemon picks the profile in `pool` with the fewest tokens used today.
+///
+/// ```toml
+/// [round_robin]
+/// enabled = true
+/// pool = ["work", "personal", "api-backup"]
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoundRobin {
+    /// Whether round-robin mode is active.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Ordered list of profiles to rotate across.
+    #[serde(default)]
+    pub pool: Vec<String>,
+
+    /// Switch to the next profile after this many tokens (rough estimate).
+    /// Defaults to 0 = switch only on rate limit.
+    #[serde(default)]
+    pub rotate_after_tokens: u64,
 }
 
 fn default_estimate_minutes() -> u64 { 300 }
@@ -53,6 +83,7 @@ impl Default for AutoSwitchConfig {
             auto_switch_back: true,
             notify: true,
             schedule: None,
+            round_robin: None,
         }
     }
 }
@@ -107,6 +138,32 @@ mod tests {
         let loaded = AutoSwitchConfig::load(dir.path()).unwrap();
         assert_eq!(loaded.fallback_chain, vec!["backup-oauth", "api-key"]);
         assert_eq!(loaded.estimate_minutes, 180);
+    }
+
+    #[test]
+    fn test_round_robin_serialization() {
+        let dir = TempDir::new().unwrap();
+        let toml = r#"
+fallback_chain = ["personal"]
+estimate_minutes = 300
+
+[round_robin]
+enabled = true
+pool = ["work", "personal", "api-backup"]
+rotate_after_tokens = 50000
+"#;
+        std::fs::write(dir.path().join("auto-switch.toml"), toml).unwrap();
+        let cfg = AutoSwitchConfig::load(dir.path()).unwrap();
+        let rr = cfg.round_robin.unwrap();
+        assert!(rr.enabled);
+        assert_eq!(rr.pool, vec!["work", "personal", "api-backup"]);
+        assert_eq!(rr.rotate_after_tokens, 50_000);
+    }
+
+    #[test]
+    fn test_round_robin_absent_is_none() {
+        let cfg = AutoSwitchConfig::default();
+        assert!(cfg.round_robin.is_none());
     }
 
     #[test]
