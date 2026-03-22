@@ -1,9 +1,12 @@
-//! API key authentication — multi-key pool with Keychain storage.
+//! API key authentication — multi-key pool with pluggable secret providers.
+//!
+//! Each slot can store its secret in the OS Keychain (default), 1Password,
+//! Doppler, or a plain environment variable.  See `auth::secrets::SecretSource`.
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::EnvMap;
+use super::{secrets::SecretSource, EnvMap};
 
 const SERVICE_NAME: &str = "claude-sentinel";
 
@@ -12,11 +15,26 @@ const SERVICE_NAME: &str = "claude-sentinel";
 pub struct ApiKeyEntry {
     /// Slot number (1-based). Determines priority order.
     pub slot: u8,
-    /// Keychain account name used to retrieve the key.
+    /// Where to retrieve this key from.
+    ///
+    /// Defaults to `SecretSource::Keychain` when absent (legacy format).
+    #[serde(default = "default_keychain_source", skip_serializing_if = "is_default_keychain")]
+    pub source: SecretSource,
+    /// Keychain account name (kept for backwards-compatibility; used when
+    /// `source` is `Keychain`).
+    #[serde(default)]
     pub keychain_account: String,
     /// Human note about this key.
     #[serde(default)]
     pub note: String,
+}
+
+fn default_keychain_source() -> SecretSource {
+    SecretSource::Keychain { account: String::new() }
+}
+
+fn is_default_keychain(s: &SecretSource) -> bool {
+    matches!(s, SecretSource::Keychain { .. })
 }
 
 /// The API key pool stored in `auth/api_keys.toml`.
@@ -34,7 +52,25 @@ impl ApiKeyPool {
         self.keys.retain(|k| k.slot != slot);
         self.keys.push(ApiKeyEntry {
             slot,
+            source: SecretSource::Keychain { account: account.clone() },
             keychain_account: account,
+            note: note.to_string(),
+        });
+        self.keys.sort_by_key(|k| k.slot);
+        Ok(())
+    }
+
+    /// Add a key that lives in an external provider (1Password, Doppler, env var).
+    ///
+    /// Unlike `add_key`, this does not write anything to the OS Keychain —
+    /// the secret stays in the external provider.
+    pub fn add_external_key(&mut self, slot: u8, source: SecretSource, note: &str) -> Result<()> {
+        source.check_tool_available()?;
+        self.keys.retain(|k| k.slot != slot);
+        self.keys.push(ApiKeyEntry {
+            slot,
+            keychain_account: String::new(),
+            source,
             note: note.to_string(),
         });
         self.keys.sort_by_key(|k| k.slot);
@@ -50,11 +86,19 @@ impl ApiKeyPool {
         Ok(())
     }
 
-    /// Retrieve the API key for a given slot from the Keychain.
+    /// Retrieve the API key for a given slot from its configured provider.
     pub fn retrieve_key(&self, slot: u8) -> Result<String> {
         let entry = self.keys.iter().find(|k| k.slot == slot)
             .ok_or_else(|| anyhow::anyhow!("slot {slot} not found in key pool"))?;
-        retrieve_from_keychain(&entry.keychain_account)
+        // Use the source if it carries a real account; otherwise fall back
+        // to legacy keychain_account field.
+        match &entry.source {
+            SecretSource::Keychain { account } => {
+                let acct = if account.is_empty() { &entry.keychain_account } else { account };
+                retrieve_from_keychain(acct)
+            }
+            other => other.retrieve(),
+        }
     }
 
     /// Get the highest-priority valid key's env vars.
@@ -63,6 +107,11 @@ impl ApiKeyPool {
         let mut map = EnvMap::new();
         map.insert("ANTHROPIC_API_KEY".to_string(), key);
         Ok(map)
+    }
+
+    /// Describe the source for each slot (for `cst validate` output).
+    pub fn describe_sources(&self) -> Vec<(u8, String)> {
+        self.keys.iter().map(|k| (k.slot, k.source.describe())).collect()
     }
 
     /// Return slots sorted by priority.
@@ -104,12 +153,20 @@ fn delete_from_keychain(account: &str) -> Result<()> {
 mod tests {
     use super::*;
 
+    fn make_entry(slot: u8, account: &str) -> ApiKeyEntry {
+        ApiKeyEntry {
+            slot,
+            source: super::SecretSource::Keychain { account: account.to_string() },
+            keychain_account: account.to_string(),
+            note: String::new(),
+        }
+    }
+
     #[test]
     fn test_api_key_pool_add_and_sorted_slots() {
         let mut pool = ApiKeyPool::default();
-        // We can't actually write to keychain in tests, so test the pool struct
-        pool.keys.push(ApiKeyEntry { slot: 2, keychain_account: "p-slot2".into(), note: "".into() });
-        pool.keys.push(ApiKeyEntry { slot: 1, keychain_account: "p-slot1".into(), note: "".into() });
+        pool.keys.push(make_entry(2, "p-slot2"));
+        pool.keys.push(make_entry(1, "p-slot1"));
         let slots = pool.sorted_slots();
         assert_eq!(slots, vec![1, 2]);
     }
@@ -123,12 +180,20 @@ mod tests {
     #[test]
     fn test_api_key_pool_remove_slot() {
         let mut pool = ApiKeyPool {
-            keys: vec![
-                ApiKeyEntry { slot: 1, keychain_account: "p-slot1".into(), note: "".into() },
-                ApiKeyEntry { slot: 2, keychain_account: "p-slot2".into(), note: "".into() },
-            ],
+            keys: vec![make_entry(1, "p-slot1"), make_entry(2, "p-slot2")],
         };
         pool.keys.retain(|k| k.slot != 1);
         assert_eq!(pool.sorted_slots(), vec![2]);
+    }
+
+    #[test]
+    fn test_describe_sources() {
+        let pool = ApiKeyPool {
+            keys: vec![make_entry(1, "work-slot1")],
+        };
+        let desc = pool.describe_sources();
+        assert_eq!(desc.len(), 1);
+        assert_eq!(desc[0].0, 1);
+        assert!(desc[0].1.contains("keychain:work-slot1"));
     }
 }

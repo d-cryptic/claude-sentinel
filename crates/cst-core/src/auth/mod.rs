@@ -8,7 +8,10 @@
 pub mod apikey;
 pub mod bedrock;
 pub mod oauth;
+pub mod secrets;
 pub mod vertex;
+
+pub use secrets::SecretSource;
 
 use anyhow::Result;
 use std::collections::HashMap;
