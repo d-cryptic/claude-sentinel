@@ -20,6 +20,34 @@ iwr https://raw.githubusercontent.com/d-cryptic/claude-sentinel/main/install.ps1
 cargo install cst-cli
 ```
 
+## Pre-Built Binaries (GitHub Releases)
+
+Each tagged release publishes ready-to-run binaries via GitHub Actions:
+
+| Platform | Archive |
+|----------|---------|
+| macOS Apple Silicon (M1/M2/M3) | `cst-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `cst-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
+| Linux x86_64 | `cst-vX.Y.Z-x86_64-linux.tar.gz` |
+| Linux ARM64 | `cst-vX.Y.Z-aarch64-linux.tar.gz` |
+
+Each archive ships a `.sha256` checksum file. Download and install manually:
+
+```bash
+# Example: macOS Apple Silicon
+VERSION=v0.1.0
+curl -LO https://github.com/d-cryptic/claude-sentinel/releases/download/${VERSION}/cst-${VERSION}-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/d-cryptic/claude-sentinel/releases/download/${VERSION}/cst-${VERSION}-aarch64-apple-darwin.tar.gz.sha256
+
+# Verify checksum
+sha256sum -c cst-${VERSION}-aarch64-apple-darwin.tar.gz.sha256
+
+# Install
+tar xzf cst-${VERSION}-aarch64-apple-darwin.tar.gz
+sudo mv cst /usr/local/bin/cst
+cst --version
+```
+
 ## First Run
 
 ```bash

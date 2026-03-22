@@ -18,36 +18,48 @@ The auto-switch daemon monitors your Claude usage and automatically switches pro
 ```toml
 # ~/.claude-sentinel/profiles/work/auto-switch.toml
 
-[on_rate_limit]
-# Profiles to try in order when work profile hits rate limit
+# Profiles to try in order when rate limit is hit
 fallback_chain = ["api-backup", "personal"]
 
-# Try rotating API keys within this profile first (before switching profiles)
-rotate_keys_first = true
-
-[quota_reset]
 # Estimated minutes until quota refills (Claude Pro: 5-hour window = 300 min)
 estimate_minutes = 300
 
-# Automatically switch back to this profile when quota refills
+# Automatically switch back when quota refills
 auto_switch_back = true
 
 # Notify on auto-switch (macOS notification)
 notify = true
 
 [schedule]
-# Only use this profile during these hours (optional)
+# Only activate this profile during these hours (optional)
 active_hours = "09:00-18:00"
-days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 timezone = "America/New_York"
 # Switch to this profile outside active_hours
 fallback = "personal"
 
-[cost_guard]
-# Switch to subscription profile when daily API spend exceeds this
-daily_limit_usd = 5.00
-fallback = "personal"
+[round_robin]
+# Distribute usage across a pool of profiles to maximise total uptime.
+# The daemon picks the profile with the fewest tokens used before switching.
+enabled = true
+pool = ["work", "personal", "api-backup"]
+# Rotate after this many tokens (0 = only on rate limit)
+rotate_after_tokens = 0
 ```
+
+### Round-Robin Mode
+
+Round-robin distributes usage across a pool of profiles so no single account hits its quota while others remain idle. Enable it with the `[round_robin]` section above.
+
+**How it works:**
+
+1. Daemon detects a rate limit on the active profile
+2. Reads `stats.json` (or live `history.jsonl`) for each profile in `pool`
+3. Picks the profile with the lowest token usage today
+4. Switches via the normal fallback mechanism
+
+**`rotate_after_tokens`**: when set to a non-zero value the daemon proactively rotates before hitting quota. Example: `rotate_after_tokens = 80000` rotates when the current profile has used ~80k tokens in the session, spreading load evenly.
+
+Round-robin and `fallback_chain` are independent — if round-robin is disabled, the explicit `fallback_chain` is used instead.
 
 ## Daemon Commands
 

@@ -30,6 +30,9 @@ cst use work:backend
 ```
 ~/.claude-sentinel/
   config.toml              Current profile:session state
+  switch-log.jsonl         Append-only event log (all profile switches)
+  scheduler.json           Rate-limit timer state (quota refill scheduler)
+  broadcast-switch.json    TTL-based broadcast for cst switch-all
   profiles/
     {name}/
       profile.toml         Metadata (auth_type, created_at, color)
@@ -37,10 +40,14 @@ cst use work:backend
       sessions/
         {name}/
           .claude/         CLAUDE_CONFIG_DIR target
+            history.jsonl  Claude Code session history (live token source)
           settings-override.json
           stats.json
       settings-override.json
-      auto-switch.toml
+      auto-switch.toml     fallback_chain, schedule, [round_robin]
+
+# Per-project (user-created, not in ~/.claude-sentinel)
+~/your-project/.cstrc      Auto-detect profile for this directory tree
 ```
 
 ## Auth Architecture
@@ -255,6 +262,75 @@ Left-click on the tray icon toggles window visibility (show/hide). The tray is c
 The app polls `list_profiles` and `daemon_status` every 30 seconds via `setInterval` to keep the UI current without requiring WebSocket or event subscriptions.
 
 The Tauri backend is a thin adapter: all logic delegates to `cst-core`. Tauri commands call the same functions used by `cst-cli`.
+
+## Auto-Detect Pipeline
+
+```
+cd ~/work/my-project     ← shell precmd runs
+  │
+  ├── cst _auto-detect $PWD $CST_CURRENT
+  │     ├── find_cstrc(): walk up to root for nearest .cstrc
+  │     ├── load_cstrc(): parse TOML
+  │     ├── git_remote_url(): git remote get-url origin
+  │     ├── Match [[auto_detect]] patterns (normalise SSH/HTTPS URLs)
+  │     └── Fall back to explicit `profile` field
+  │
+  └── if detected != CST_CURRENT → emit env exports → shell evals them
+```
+
+**Key file**: `crates/cst-core/src/auto_detect.rs`
+
+Glob patterns support `*` as a multi-character wildcard. Both SSH (`git@github.com:org/repo.git`) and HTTPS (`https://github.com/org/repo`) URLs are normalised to `github.com/org/repo` before matching.
+
+## Shell Precmd Hook (3 steps)
+
+`_cst_check_switch` runs before every prompt. Three checks in priority order:
+
+```
+Step 1: One-shot pending switch
+  ~/.claude-sentinel/pending-switch exists?
+  → eval contents → rm file → notify
+
+Step 2: Broadcast switch
+  cst _broadcast-switch $CST_CURRENT $CST_BROADCAST_ID
+  → if output non-empty → eval → update CST_BROADCAST_ID
+
+Step 3: .cstrc auto-detect
+  cst _auto-detect $PWD $CST_CURRENT
+  → if output non-empty → eval (silently)
+```
+
+Steps 1 and 2 come from the daemon. Step 3 is purely directory-driven with no daemon involvement.
+
+## Token Counting
+
+`cst remaining` uses two token sources in priority order:
+
+1. **Live `history.jsonl`** — Claude Code writes one JSONL event per API call. `cst-core::history_parser` scans all lines for `usage` objects and sums them. Shows `(live)` label in output.
+2. **Cached `stats.json`** — updated by the daemon after each session. Used as fallback when `history.jsonl` is absent or inaccessible.
+
+**Key file**: `crates/cst-core/src/history_parser.rs`
+
+## Crate Module Summary
+
+| Module | Purpose |
+|--------|---------|
+| `cst-core::auto_detect` | `.cstrc` walk-up, git pattern matching |
+| `cst-core::auto_switch` | Daemon, detector, scheduler, switch log |
+| `cst-core::auth` | OAuth, API key, Bedrock, Vertex auth |
+| `cst-core::broadcast` | `switch-all` TTL file + shell dedup |
+| `cst-core::config` | `GlobalConfig` (current profile:session) |
+| `cst-core::env_overlay` | `env.toml` per-session env injection |
+| `cst-core::history_parser` | Live token counts from `history.jsonl` |
+| `cst-core::hooks` | ProfileHooks lifecycle (pre/post switch) |
+| `cst-core::merge` | 3-layer settings deep merge |
+| `cst-core::mcp` | MCP override merge |
+| `cst-core::platform` | Cross-platform path resolution |
+| `cst-core::profile` | Profile CRUD + templates |
+| `cst-core::session` | Session CRUD + symlink setup |
+| `cst-core::shell` | `shell-init` code + `_env` exports |
+| `cst-core::stats` | `SessionStats` (tokens, cost, rate limits) |
+| `cst-core::templates` | Built-in profile templates |
 
 ## Crate Dependencies
 

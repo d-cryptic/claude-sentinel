@@ -235,6 +235,59 @@ cst use api-backup:backend
 
 Use case: you're on `work:backend` and hit a rate limit. Switch just the `backend` session to `api-backup:backend` to get different credentials, while other sessions stay on `work`.
 
+## Auto-Detect (`.cstrc`)
+
+Claude Sentinel supports direnv-style per-project profile selection via a `.cstrc` file.
+
+### How it works
+
+When you `cd` into a directory, the shell precmd hook calls `cst _auto-detect $PWD` and automatically activates the matching profile — no manual `cst use` required.
+
+The hook walks from the current directory up to the filesystem root looking for the nearest `.cstrc`. If found, it checks git remote URL patterns first, then falls back to the explicit `profile` field.
+
+### `.cstrc` format
+
+```toml
+# ~/.../my-project/.cstrc
+
+# Explicit profile (always applied when in this directory tree)
+profile = "work"
+session = "backend"
+
+# Optional: more specific git remote URL patterns (checked first)
+# Use * as a wildcard. Both SSH and HTTPS URLs are normalised automatically.
+[[auto_detect]]
+git_remote_pattern = "github.com/mycompany/*"
+profile = "work"
+session = "backend"
+
+[[auto_detect]]
+git_remote_pattern = "github.com/personal/*"
+profile = "personal"
+```
+
+Git URL normalisation:
+- `git@github.com:org/repo.git` → `github.com/org/repo`
+- `https://github.com/org/repo.git` → `github.com/org/repo`
+
+Pattern examples:
+- `github.com/myco/*` — all repos in the `myco` org
+- `*.myco.internal/*` — any host ending in `.myco.internal`
+
+### `cst auto-detect-status [<dir>]`
+
+Preview what `.cstrc` would activate in a directory without switching:
+
+```bash
+cst auto-detect-status        # current directory
+cst auto-detect-status ~/work/api
+
+# Output example:
+# Profile : work:backend
+# Source  : .cstrc at /home/user/work/.cstrc
+# Status  : would switch from personal:default → work:backend
+```
+
 ## Switch History
 
 ### `cst history`
@@ -266,10 +319,12 @@ List all profiles and their sessions.
 
 Show quota usage for the active profile — token counts, estimated cost, rate-limit timers with countdown, and a cross-profile summary.
 
+Token counts are read live from Claude Code's `history.jsonl` when available (labelled `(live)`), falling back to the cached `stats.json`.
+
 ```
 Profile  : work:backend
 
-── Token Usage (current session) ──────────────────────────
+── Token Usage (current session) (live) ──────────────────────────
   Tokens in   : 15.2k
   Tokens out  : 4.5k
   Total       : 19.7k
@@ -363,7 +418,10 @@ Supports: `zsh`, `bash`, `fish`, `powershell`. Auto-detects if `--shell` is omit
 
 The init code installs:
 1. A `cst` shell function that wraps `cst use` to eval env exports in the current shell
-2. A `precmd` hook that checks for pending daemon-initiated switches
+2. A `precmd` hook (`_cst_check_switch`) that runs on every prompt with three steps:
+   - **Step 1** — one-shot pending switch from daemon (this shell only)
+   - **Step 2** — broadcast switch from `cst switch-all` (applies to all matching shells)
+   - **Step 3** — `.cstrc` auto-detect for the current directory
 3. `CST_CURRENT` variable showing active `profile:session`
 
 ### Starship Prompt Module
