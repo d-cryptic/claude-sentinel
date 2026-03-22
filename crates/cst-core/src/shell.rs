@@ -43,6 +43,13 @@ cst() {
                 eval "$(command cst _env "$2" 2>&1)"
             fi
             ;;
+        switch-all)
+            # switch-all also switches the current shell immediately
+            command cst switch-all "$2" "$3"
+            if [ -n "$3" ]; then
+                eval "$(command cst _env "${3}:${CST_CURRENT#*:}" 2>&1)"
+            fi
+            ;;
         *)
             command cst "$@"
             ;;
@@ -51,11 +58,22 @@ cst() {
 
 # Auto-switch check: runs before each prompt
 _cst_check_switch() {
+    # 1. One-shot pending switch (daemon-initiated for this specific shell)
     local switch_file="${HOME}/.claude-sentinel/pending-switch"
     if [ -f "$switch_file" ]; then
         eval "$(cat "$switch_file")" 2>/dev/null
         rm -f "$switch_file"
         printf '⚡ claude-sentinel: switched to %s\n' "$CST_CURRENT" >&2
+    fi
+
+    # 2. Broadcast switch (switch-all — applies to all shells running the from-profile)
+    if [ -n "${CST_CURRENT:-}" ]; then
+        local _cst_bc
+        _cst_bc="$(command cst _broadcast-switch "${CST_CURRENT}" "${CST_BROADCAST_ID:-}" 2>/dev/null)"
+        if [ -n "$_cst_bc" ]; then
+            eval "$_cst_bc"
+            printf '⚡ claude-sentinel: broadcast → %s\n' "$CST_CURRENT" >&2
+        fi
     fi
 }
 
@@ -89,6 +107,13 @@ function _cst_check_switch --on-event fish_prompt
         eval (cat $switch_file) 2>/dev/null
         rm -f $switch_file
         echo "⚡ claude-sentinel: switched to $CST_CURRENT" >&2
+    end
+    if test -n "$CST_CURRENT"
+        set _cst_bc (command cst _broadcast-switch "$CST_CURRENT" "$CST_BROADCAST_ID" 2>/dev/null)
+        if test -n "$_cst_bc"
+            eval $_cst_bc
+            echo "⚡ claude-sentinel: broadcast → $CST_CURRENT" >&2
+        end
     end
 end
 "#

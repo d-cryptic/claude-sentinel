@@ -8,6 +8,7 @@ pub async fn dispatch(action: crate::SessionCommands) -> Result<()> {
         crate::SessionCommands::Rm { name } => remove(&name),
         crate::SessionCommands::Tag { name, description } => tag(&name, &description),
         crate::SessionCommands::Archive { name } => archive(&name),
+        crate::SessionCommands::Switch { name, to_profile } => switch(&name, &to_profile),
     }
 }
 
@@ -65,5 +66,42 @@ pub fn archive(name: &str) -> Result<()> {
     let profile = current_profile()?;
     SessionManager::new(platform::profile_dir(&profile)).archive(name)?;
     println!("✓ Archived '{name}'");
+    Ok(())
+}
+
+/// Activate session `name` under a different profile.
+///
+/// If the session doesn't exist in `to_profile`, it is created there first.
+/// Then writes a pending-switch file so the current shell picks up the change.
+pub fn switch(name: &str, to_profile: &str) -> Result<()> {
+    let from_profile = current_profile()?;
+
+    // Ensure the target profile exists
+    let target_profile_dir = platform::profile_dir(to_profile);
+    if !target_profile_dir.exists() {
+        anyhow::bail!(
+            "Profile '{to_profile}' does not exist. Create it first with: cst new {to_profile}"
+        );
+    }
+
+    // Ensure the session exists in the target profile — create it if missing
+    let target_mgr = SessionManager::new(platform::profile_dir(to_profile));
+    if target_mgr.load(name).is_err() {
+        target_mgr.create(name, &platform::global_claude_dir())?;
+        println!("  Created session '{name}' in profile '{to_profile}'");
+    }
+
+    // Write the pending-switch so the shell picks it up at next prompt
+    cst_core::auto_switch::daemon::write_pending_switch(to_profile, name)?;
+
+    // Update global config immediately
+    let mut cfg = GlobalConfig::load().unwrap_or_default();
+    cfg.current_profile = to_profile.to_string();
+    cfg.current_session = name.to_string();
+    cfg.save()?;
+
+    println!("✓ Session '{name}' switched: {from_profile} → {to_profile}");
+    println!("  Run `cst use {to_profile}:{name}` to apply in the current shell, or");
+    println!("  it will be picked up automatically at the next prompt.");
     Ok(())
 }

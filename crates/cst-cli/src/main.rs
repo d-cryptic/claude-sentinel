@@ -43,6 +43,15 @@ enum Commands {
     /// Live real-time usage dashboard (like htop for Claude).
     Top,
 
+    /// Switch ALL open shells currently on profile <from> to profile <to>.
+    /// Each shell picks up the switch on its next prompt via the precmd hook.
+    SwitchAll {
+        /// Profile to switch away from.
+        from: String,
+        /// Profile to switch to.
+        to: String,
+    },
+
     /// Show switch history with reasons.
     History,
 
@@ -137,6 +146,15 @@ enum Commands {
     #[command(name = "_env", hide = true)]
     Env { profile_session: String },
 
+    /// Check broadcast-switch.json and output env exports if this shell should switch.
+    /// Called by the precmd hook with $CST_CURRENT and $CST_BROADCAST_ID.
+    #[command(name = "_broadcast-switch", hide = true)]
+    BroadcastSwitch {
+        current: String,
+        #[arg(default_value = "")]
+        already_applied_id: String,
+    },
+
     /// List available profile templates.
     Templates,
 
@@ -196,6 +214,14 @@ enum SessionCommands {
     Tag { name: String, description: String },
     /// Archive a session (hidden from list, history kept).
     Archive { name: String },
+    /// Activate a session under a different profile (creates it there if needed).
+    Switch {
+        /// Session name to switch.
+        name: String,
+        /// Target profile to activate the session under.
+        #[arg(long = "to")]
+        to_profile: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -238,10 +264,14 @@ async fn main() -> Result<()> {
         Some(Commands::Tui) => commands::tui::run().await,
         Some(Commands::ShellInit { shell }) => shell_cmd::shell_init(shell),
         Some(Commands::Env { profile_session }) => shell_cmd::env_cmd(&profile_session),
+        Some(Commands::BroadcastSwitch { current, already_applied_id }) => {
+            commands::switch_all::broadcast_switch_check(&current, &already_applied_id)
+        }
         Some(Commands::Status) => commands::status::run(),
         Some(Commands::List) => commands::list::run(),
         Some(Commands::Remaining) => commands::quota::remaining(),
         Some(Commands::Top) => commands::top::run().await,
+        Some(Commands::SwitchAll { from, to }) => commands::switch_all::run(&from, &to),
         Some(Commands::History) => commands::history::run(),
         Some(Commands::Why) => commands::history::why(),
         Some(Commands::New { name, auth, template }) => {

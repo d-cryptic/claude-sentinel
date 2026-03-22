@@ -5,6 +5,7 @@
 
 pub mod auth;
 pub mod auto_switch;
+pub mod broadcast;
 pub mod config;
 pub mod env_overlay;
 pub mod hooks;
