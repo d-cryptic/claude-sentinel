@@ -1,0 +1,73 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+
+  <Product
+    Id='*'
+    Name='Claude Sentinel'
+    UpgradeCode='A1B2C3D4-E5F6-7890-ABCD-EF1234567890'
+    Manufacturer='d-cryptic'
+    Language='1033'
+    Codepage='1252'
+    Version='$(var.Version)'>
+
+    <Package Id='*'
+      Keywords='Installer'
+      Description='Claude Sentinel — intelligent Claude Code account manager'
+      Comments='MIT License'
+      Manufacturer='d-cryptic'
+      InstallerVersion='450'
+      Languages='1033'
+      Compressed='yes'
+      SummaryCodepage='1252' />
+
+    <MajorUpgrade
+      Schedule='afterInstallInitialize'
+      DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.' />
+
+    <Media Id='1' Cabinet='cst.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1' />
+    <Property Id='DiskPrompt' Value='Claude Sentinel Installation [1]' />
+
+    <Directory Id='TARGETDIR' Name='SourceDir'>
+      <Directory Id='ProgramFilesFolder' Name='PFiles'>
+        <Directory Id='APPLICATIONFOLDER' Name='claude-sentinel'>
+          <Component Id='License' Guid='*'>
+            <File Id='LicenseFile' Name='LICENSE' DiskId='1' Source='..\..\LICENSE' KeyPath='yes' />
+          </Component>
+          <Component Id='binary0' Guid='*'>
+            <File Id='exe0' Name='cst.exe' DiskId='1'
+              Source='..\..\target\release\cst.exe' KeyPath='yes' />
+            <Environment Id='PATH' Name='PATH' Value='[APPLICATIONFOLDER]'
+              Permanent='no' Part='last' Action='set' System='yes' />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature
+      Id='MainProgram'
+      Title='Claude Sentinel'
+      Description='Installs cst.exe and adds it to PATH'
+      Level='1'
+      ConfigurableDirectory='APPLICATIONFOLDER'>
+      <ComponentRef Id='License' />
+      <ComponentRef Id='binary0' />
+    </Feature>
+
+    <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]'
+      After='CostFinalize' />
+
+    <!-- Icon is optional — replace icon.ico with a real .ico file if available.
+         If icon.ico is missing, comment out these two lines. -->
+    <!-- <Icon Id='ProductICO' SourceFile='icon.ico' /> -->
+    <!-- <Property Id='ARPPRODUCTICON' Value='ProductICO' /> -->
+
+    <Property Id='ARPHELPLINK' Value='https://github.com/d-cryptic/claude-sentinel' />
+    <UI>
+      <UIRef Id='WixUI_InstallDir' />
+      <Publish Dialog='WelcomeDlg' Control='Next' Event='NewDialog' Value='InstallDirDlg' Order='99'>1</Publish>
+      <Publish Dialog='InstallDirDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' Order='99'>1</Publish>
+    </UI>
+    <WixVariable Id='WixUILicenseRtf' Value='License.rtf' />
+    <Property Id='WIXUI_INSTALLDIR' Value='APPLICATIONFOLDER' />
+  </Product>
+</Wix>

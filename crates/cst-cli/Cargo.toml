@@ -4,7 +4,14 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "claude-sentinel CLI — intelligent Claude Code account & profile manager"
+description = "Claude Sentinel — intelligent Claude Code multi-account manager CLI"
+keywords = ["claude", "cli", "profile-manager", "anthropic", "dev-tools"]
+categories = ["command-line-utilities", "authentication"]
+readme = "../../README.md"
+documentation = "https://github.com/d-cryptic/claude-sentinel/blob/main/docs/USAGE.md"
+homepage = "https://github.com/d-cryptic/claude-sentinel"
+repository.workspace = true
+default-run = "cst"
 
 [[bin]]
 name = "cst"
@@ -26,6 +33,12 @@ which = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+[package.metadata.wix]
+upgrade-guid = "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
+path-guid = "B2C3D4E5-F6A7-8901-BCDE-F12345678901"
+license = false
+eula = false
 
 [dev-dependencies]
 tempfile = "3"

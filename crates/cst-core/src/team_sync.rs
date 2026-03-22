@@ -30,7 +30,21 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::merge;
 use crate::platform;
+
+/// Merge strategy for resolving conflicts when pulling team profiles.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeStrategy {
+    /// Remote wins — overwrite local with pulled content (current behaviour, default).
+    #[default]
+    Theirs,
+    /// Local wins — keep local files, ignore remote changes for conflicting keys.
+    Ours,
+    /// Deep merge — merge JSON/TOML objects key-by-key; remote wins on scalar conflicts.
+    Merge,
+}
 
 /// Team sync configuration stored at `~/.claude-sentinel/team-sync.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +71,10 @@ pub struct TeamSyncConfig {
     /// Committer email for sync commits.
     #[serde(default)]
     pub committer_email: String,
+
+    /// Merge strategy used when pulling profiles.
+    #[serde(default)]
+    pub merge_strategy: MergeStrategy,
 }
 
 fn default_branch() -> String {
@@ -140,6 +158,7 @@ pub fn init(remote_url: &str, branch: &str) -> Result<TeamSyncConfig> {
         exclude_profiles: Vec::new(),
         committer_name: String::new(),
         committer_email: String::new(),
+        merge_strategy: MergeStrategy::default(),
     };
     cfg.save()?;
     println!("✓ Team sync configured → {}", remote_url);
@@ -196,8 +215,18 @@ pub fn push() -> Result<()> {
 }
 
 /// Pull profile configs from the remote and merge into local profiles.
+///
+/// Uses the merge strategy from the config file.
 pub fn pull() -> Result<()> {
+    pull_with_strategy(None)
+}
+
+/// Pull profile configs with an explicit merge strategy override.
+///
+/// If `strategy` is `None`, falls back to the config file's `merge_strategy`.
+pub fn pull_with_strategy(strategy: Option<MergeStrategy>) -> Result<()> {
     let cfg = TeamSyncConfig::load()?;
+    let effective_strategy = strategy.unwrap_or_else(|| cfg.merge_strategy.clone());
     let repo = sync_repo_path();
     ensure_repo_exists(&repo, &cfg)?;
 
@@ -220,14 +249,19 @@ pub fn pull() -> Result<()> {
         }
         let src = entry.path();
         let dst = platform::profile_dir(&profile_name);
-        copy_profile_from_repo(&src, &dst)?;
+        copy_profile_from_repo_with_strategy(&src, &dst, &effective_strategy)?;
         pulled.push(profile_name);
     }
 
     if pulled.is_empty() {
         println!("No profiles to pull.");
     } else {
-        println!("✓ Pulled {} profile(s): {}", pulled.len(), pulled.join(", "));
+        println!(
+            "✓ Pulled {} profile(s) (strategy: {:?}): {}",
+            pulled.len(),
+            effective_strategy,
+            pulled.join(", ")
+        );
     }
     Ok(())
 }
@@ -261,6 +295,19 @@ pub fn status() -> Result<()> {
     }
     if !cfg.exclude_profiles.is_empty() {
         println!("Excl.  : {}", cfg.exclude_profiles.join(", "));
+    }
+
+    println!("Strategy: {:?}", cfg.merge_strategy);
+
+    // Detect and display conflicts
+    let conflicts = detect_conflicts(&cfg)?;
+    if conflicts.is_empty() {
+        println!("Conflicts: none");
+    } else {
+        println!("Conflicts: {} file(s) differ from remote", conflicts.len());
+        for c in &conflicts {
+            println!("  - {}", c);
+        }
     }
 
     Ok(())
@@ -315,12 +362,21 @@ fn copy_profile_to_repo(name: &str, profiles_dir: &Path, repo: &Path) -> Result<
 }
 
 fn copy_profile_from_repo(src: &Path, dst: &Path) -> Result<()> {
+    copy_profile_from_repo_with_strategy(src, dst, &MergeStrategy::Theirs)
+}
+
+/// Copy profile from repo to local, applying the given merge strategy.
+fn copy_profile_from_repo_with_strategy(
+    src: &Path,
+    dst: &Path,
+    strategy: &MergeStrategy,
+) -> Result<()> {
     std::fs::create_dir_all(dst)?;
 
     for file in SYNC_FILES {
         let s = src.join(file);
         if s.exists() {
-            std::fs::copy(&s, dst.join(file))?;
+            copy_file_with_strategy(&s, &dst.join(file), strategy)?;
         }
     }
 
@@ -333,13 +389,89 @@ fn copy_profile_from_repo(src: &Path, dst: &Path) -> Result<()> {
             for file in SESSION_SYNC_FILES {
                 let sf = entry.path().join(file);
                 if sf.exists() {
-                    std::fs::copy(&sf, sdst.join(file))?;
+                    copy_file_with_strategy(&sf, &sdst.join(file), strategy)?;
                 }
             }
         }
     }
 
     Ok(())
+}
+
+/// Copy a single file from remote to local, applying merge strategy.
+fn copy_file_with_strategy(remote: &Path, local: &Path, strategy: &MergeStrategy) -> Result<()> {
+    match strategy {
+        MergeStrategy::Theirs => {
+            // Remote wins — always overwrite.
+            std::fs::copy(remote, local)?;
+        }
+        MergeStrategy::Ours => {
+            // Local wins — only copy if the local file does not exist.
+            if !local.exists() {
+                std::fs::copy(remote, local)?;
+            }
+        }
+        MergeStrategy::Merge => {
+            if !local.exists() {
+                // No local file — just copy.
+                std::fs::copy(remote, local)?;
+            } else if remote
+                .extension()
+                .map_or(false, |ext| ext == "json")
+            {
+                // Deep merge JSON: local is base, remote is overlay (remote wins on scalars).
+                let mut base = merge::load_json(local)?;
+                let overlay = merge::load_json(remote)?;
+                merge::deep_merge(&mut base, &overlay);
+                let merged = serde_json::to_string_pretty(&base)?;
+                std::fs::write(local, merged)?;
+            } else {
+                // Non-JSON files: remote wins (same as Theirs).
+                std::fs::copy(remote, local)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Compare local profile files against the repo copy and return paths that differ.
+///
+/// Each returned string is in the format `"<profile>/<filename>"`.
+pub fn detect_conflicts(cfg: &TeamSyncConfig) -> Result<Vec<String>> {
+    let repo = sync_repo_path();
+    let repo_profiles = repo.join("profiles");
+    let mut conflicts = Vec::new();
+
+    if !repo_profiles.exists() {
+        return Ok(conflicts);
+    }
+
+    for entry in std::fs::read_dir(&repo_profiles)? {
+        let entry = entry?;
+        let profile_name = entry.file_name().to_string_lossy().to_string();
+        if !cfg.should_sync(&profile_name) {
+            continue;
+        }
+        let repo_dir = entry.path();
+        let local_dir = platform::profile_dir(&profile_name);
+
+        for file in SYNC_FILES {
+            let repo_file = repo_dir.join(file);
+            let local_file = local_dir.join(file);
+            if repo_file.exists() && local_file.exists() {
+                let repo_content = std::fs::read(&repo_file)?;
+                let local_content = std::fs::read(&local_file)?;
+                if repo_content != local_content {
+                    conflicts.push(format!("{}/{}", profile_name, file));
+                }
+            } else if repo_file.exists() != local_file.exists() {
+                // One exists and the other doesn't — that's a conflict too.
+                conflicts.push(format!("{}/{}", profile_name, file));
+            }
+        }
+    }
+
+    Ok(conflicts)
 }
 
 fn ensure_repo_exists(repo: &Path, cfg: &TeamSyncConfig) -> Result<()> {
@@ -395,6 +527,7 @@ mod tests {
             exclude_profiles: vec![],
             committer_name: String::new(),
             committer_email: String::new(),
+            merge_strategy: MergeStrategy::default(),
         };
         assert!(cfg.should_sync("work"));
         assert!(cfg.should_sync("personal"));
@@ -409,6 +542,7 @@ mod tests {
             exclude_profiles: vec!["personal".to_string()],
             committer_name: String::new(),
             committer_email: String::new(),
+            merge_strategy: MergeStrategy::default(),
         };
         assert!(cfg.should_sync("work"));
         assert!(!cfg.should_sync("personal"));
@@ -423,6 +557,7 @@ mod tests {
             exclude_profiles: vec![],
             committer_name: String::new(),
             committer_email: String::new(),
+            merge_strategy: MergeStrategy::default(),
         };
         assert!(cfg.should_sync("work"));
         assert!(!cfg.should_sync("personal"));
@@ -439,6 +574,7 @@ mod tests {
             exclude_profiles: vec!["personal".to_string()],
             committer_name: "Bot".to_string(),
             committer_email: "bot@example.com".to_string(),
+            merge_strategy: MergeStrategy::default(),
         };
         let path = dir.path().join("team-sync.toml");
         std::fs::write(&path, toml::to_string_pretty(&cfg).unwrap()).unwrap();
@@ -547,6 +683,7 @@ mod tests {
             exclude_profiles: vec!["personal".to_string()],
             committer_name: String::new(),
             committer_email: String::new(),
+            merge_strategy: MergeStrategy::default(),
         };
         assert!(cfg.should_sync("work"));
         assert!(!cfg.should_sync("personal"), "exclude must take precedence over include");
@@ -585,5 +722,253 @@ mod tests {
             assert!(!file.contains("oauth"), "SYNC_FILES must not contain oauth files: {}", file);
             assert!(!file.contains("secret"), "SYNC_FILES must not contain secret files: {}", file);
         }
+    }
+
+    // ── Merge strategy tests ─────────────────────────────────────────────
+
+    #[test]
+    fn pull_strategy_ours_does_not_overwrite_local() {
+        let remote_dir = TempDir::new().unwrap();
+        let local_dir = TempDir::new().unwrap();
+
+        // Remote has a file with remote content
+        std::fs::write(remote_dir.path().join("profile.toml"), "name = \"remote\"").unwrap();
+        // Local already has a different version
+        std::fs::write(local_dir.path().join("profile.toml"), "name = \"local\"").unwrap();
+
+        copy_profile_from_repo_with_strategy(
+            remote_dir.path(),
+            local_dir.path(),
+            &MergeStrategy::Ours,
+        )
+        .unwrap();
+
+        // Local file must be untouched — Ours means local wins
+        let content = std::fs::read_to_string(local_dir.path().join("profile.toml")).unwrap();
+        assert_eq!(content, "name = \"local\"");
+    }
+
+    #[test]
+    fn pull_strategy_ours_copies_new_files() {
+        let remote_dir = TempDir::new().unwrap();
+        let local_dir = TempDir::new().unwrap();
+
+        // Remote has a file that doesn't exist locally
+        std::fs::write(
+            remote_dir.path().join("settings-override.json"),
+            r#"{"model":"opus"}"#,
+        )
+        .unwrap();
+
+        copy_profile_from_repo_with_strategy(
+            remote_dir.path(),
+            local_dir.path(),
+            &MergeStrategy::Ours,
+        )
+        .unwrap();
+
+        // New file should be copied even with Ours strategy
+        assert!(local_dir.path().join("settings-override.json").exists());
+    }
+
+    #[test]
+    fn pull_strategy_theirs_overwrites_local() {
+        let remote_dir = TempDir::new().unwrap();
+        let local_dir = TempDir::new().unwrap();
+
+        std::fs::write(remote_dir.path().join("profile.toml"), "name = \"remote\"").unwrap();
+        std::fs::write(local_dir.path().join("profile.toml"), "name = \"local\"").unwrap();
+
+        copy_profile_from_repo_with_strategy(
+            remote_dir.path(),
+            local_dir.path(),
+            &MergeStrategy::Theirs,
+        )
+        .unwrap();
+
+        let content = std::fs::read_to_string(local_dir.path().join("profile.toml")).unwrap();
+        assert_eq!(content, "name = \"remote\"");
+    }
+
+    #[test]
+    fn pull_strategy_merge_combines_json_keys() {
+        let remote_dir = TempDir::new().unwrap();
+        let local_dir = TempDir::new().unwrap();
+
+        // Local JSON has key "a"
+        std::fs::write(
+            local_dir.path().join("settings-override.json"),
+            r#"{"a": 1, "shared": "local"}"#,
+        )
+        .unwrap();
+
+        // Remote JSON has key "b" and different "shared"
+        std::fs::write(
+            remote_dir.path().join("settings-override.json"),
+            r#"{"b": 2, "shared": "remote"}"#,
+        )
+        .unwrap();
+
+        copy_profile_from_repo_with_strategy(
+            remote_dir.path(),
+            local_dir.path(),
+            &MergeStrategy::Merge,
+        )
+        .unwrap();
+
+        let content =
+            std::fs::read_to_string(local_dir.path().join("settings-override.json")).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // "a" from local preserved
+        assert_eq!(val["a"], serde_json::json!(1));
+        // "b" from remote added
+        assert_eq!(val["b"], serde_json::json!(2));
+        // "shared" — remote wins on scalar conflicts
+        assert_eq!(val["shared"], serde_json::json!("remote"));
+    }
+
+    #[test]
+    fn pull_strategy_merge_deep_merges_nested_objects() {
+        let remote_dir = TempDir::new().unwrap();
+        let local_dir = TempDir::new().unwrap();
+
+        std::fs::write(
+            local_dir.path().join("settings-override.json"),
+            r#"{"outer": {"local_key": true, "conflict": "local"}}"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            remote_dir.path().join("settings-override.json"),
+            r#"{"outer": {"remote_key": true, "conflict": "remote"}}"#,
+        )
+        .unwrap();
+
+        copy_profile_from_repo_with_strategy(
+            remote_dir.path(),
+            local_dir.path(),
+            &MergeStrategy::Merge,
+        )
+        .unwrap();
+
+        let content =
+            std::fs::read_to_string(local_dir.path().join("settings-override.json")).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(val["outer"]["local_key"], serde_json::json!(true));
+        assert_eq!(val["outer"]["remote_key"], serde_json::json!(true));
+        assert_eq!(val["outer"]["conflict"], serde_json::json!("remote"));
+    }
+
+    #[test]
+    fn pull_strategy_merge_non_json_uses_theirs() {
+        let remote_dir = TempDir::new().unwrap();
+        let local_dir = TempDir::new().unwrap();
+
+        // TOML file — Merge strategy falls back to Theirs for non-JSON
+        std::fs::write(local_dir.path().join("profile.toml"), "name = \"local\"").unwrap();
+        std::fs::write(remote_dir.path().join("profile.toml"), "name = \"remote\"").unwrap();
+
+        copy_profile_from_repo_with_strategy(
+            remote_dir.path(),
+            local_dir.path(),
+            &MergeStrategy::Merge,
+        )
+        .unwrap();
+
+        let content = std::fs::read_to_string(local_dir.path().join("profile.toml")).unwrap();
+        assert_eq!(content, "name = \"remote\"");
+    }
+
+    #[test]
+    fn detect_conflicts_finds_differing_files() {
+        // Set up a fake sync repo and local profiles via CST_DATA_DIR
+        let tmp = TempDir::new().unwrap();
+        let data_dir = tmp.path().join("cst-data");
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        // Create a team-sync config
+        let cfg = TeamSyncConfig {
+            remote_url: "https://x".to_string(),
+            branch: "main".to_string(),
+            include_profiles: vec![],
+            exclude_profiles: vec![],
+            committer_name: String::new(),
+            committer_email: String::new(),
+            merge_strategy: MergeStrategy::default(),
+        };
+
+        // Create "repo" profile dir
+        let repo_profile = data_dir.join("team-sync-repo").join("profiles").join("work");
+        std::fs::create_dir_all(&repo_profile).unwrap();
+        std::fs::write(repo_profile.join("profile.toml"), "name = \"remote\"").unwrap();
+        std::fs::write(repo_profile.join("settings-override.json"), r#"{"a":1}"#).unwrap();
+
+        // Create local profile dir
+        let local_profile = data_dir.join("profiles").join("work");
+        std::fs::create_dir_all(&local_profile).unwrap();
+        std::fs::write(local_profile.join("profile.toml"), "name = \"local\"").unwrap();
+        std::fs::write(local_profile.join("settings-override.json"), r#"{"a":1}"#).unwrap();
+
+        // Temporarily set CST_DATA_DIR for the test
+        std::env::set_var("CST_DATA_DIR", &data_dir);
+        let result = detect_conflicts(&cfg);
+        std::env::remove_var("CST_DATA_DIR");
+
+        let conflicts = result.unwrap();
+        // profile.toml differs, settings-override.json is the same
+        assert!(
+            conflicts.contains(&"work/profile.toml".to_string()),
+            "expected profile.toml conflict, got: {:?}",
+            conflicts,
+        );
+        assert!(
+            !conflicts.contains(&"work/settings-override.json".to_string()),
+            "settings-override.json should NOT conflict (identical content)",
+        );
+    }
+
+    #[test]
+    fn merge_strategy_default_is_theirs() {
+        assert_eq!(MergeStrategy::default(), MergeStrategy::Theirs);
+    }
+
+    #[test]
+    fn merge_strategy_serde_roundtrip() {
+        #[derive(Serialize, Deserialize)]
+        struct Wrapper {
+            strategy: MergeStrategy,
+        }
+
+        for variant in [MergeStrategy::Theirs, MergeStrategy::Ours, MergeStrategy::Merge] {
+            let w = Wrapper {
+                strategy: variant.clone(),
+            };
+            let s = toml::to_string(&w).unwrap();
+            let loaded: Wrapper = toml::from_str(&s).unwrap();
+            assert_eq!(loaded.strategy, variant);
+        }
+    }
+
+    #[test]
+    fn config_with_merge_strategy_deserializes() {
+        let toml_str = r#"
+            remote_url = "https://x"
+            branch = "main"
+            merge_strategy = "merge"
+        "#;
+        let cfg: TeamSyncConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.merge_strategy, MergeStrategy::Merge);
+    }
+
+    #[test]
+    fn config_without_merge_strategy_defaults_to_theirs() {
+        let toml_str = r#"
+            remote_url = "https://x"
+            branch = "main"
+        "#;
+        let cfg: TeamSyncConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.merge_strategy, MergeStrategy::Theirs);
     }
 }

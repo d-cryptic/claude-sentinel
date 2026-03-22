@@ -92,6 +92,14 @@ enum Commands {
         profile: String,
         #[arg(long, default_value = "1")]
         slot: u8,
+        /// Secret provider (skip interactive menu).
+        /// Format: "keychain", "op://vault/item/field", "doppler:SECRET_NAME",
+        /// "$ENV_VAR" or "env:VAR_NAME"
+        #[arg(long)]
+        source: Option<String>,
+        /// Optional note/label for this key slot.
+        #[arg(long)]
+        note: Option<String>,
     },
 
     /// Session management subcommands.
@@ -260,7 +268,11 @@ enum TeamCommands {
     /// Push local profile configs to the remote.
     Push,
     /// Pull profile configs from the remote.
-    Pull,
+    Pull {
+        /// Override merge strategy: theirs (default), ours, merge.
+        #[arg(long)]
+        strategy: Option<String>,
+    },
     /// Show sync status.
     Status,
 }
@@ -329,7 +341,9 @@ async fn main() -> Result<()> {
         Some(Commands::Rm { name }) => profile_cmd::remove(&name),
         Some(Commands::Rename { old, new }) => profile_cmd::rename(&old, &new),
         Some(Commands::Login { profile }) => profile_cmd::login(profile.as_deref()).await,
-        Some(Commands::AddKey { profile, slot }) => profile_cmd::add_key(&profile, slot),
+        Some(Commands::AddKey { profile, slot, source, note }) => {
+            profile_cmd::add_key(&profile, slot, source.as_deref(), note.as_deref())
+        }
         Some(Commands::Session { action }) => session_cmd::dispatch(action).await,
         Some(Commands::Daemon { action }) => commands::daemon::dispatch(action).await,
         Some(Commands::AutoSwitch { action }) => commands::auto_switch::dispatch(action).await,
@@ -362,7 +376,7 @@ async fn main() -> Result<()> {
                 commands::team::init(&remote_url, &branch)
             }
             TeamCommands::Push => commands::team::push(),
-            TeamCommands::Pull => commands::team::pull(),
+            TeamCommands::Pull { strategy } => commands::team::pull(strategy),
             TeamCommands::Status => commands::team::status(),
         },
         Some(Commands::Templates) => commands::templates::list(),

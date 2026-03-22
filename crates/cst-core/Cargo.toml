@@ -4,7 +4,14 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Core library for claude-sentinel — profile, session, auth, and daemon logic"
+description = "Core library for Claude Sentinel — intelligent Claude Code account manager"
+keywords = ["claude", "cli", "auth", "profile-manager", "anthropic"]
+categories = ["command-line-utilities", "authentication", "config"]
+readme = "../../README.md"
+documentation = "https://docs.rs/cst-core"
+homepage = "https://github.com/d-cryptic/claude-sentinel"
+repository.workspace = true
+exclude = ["/tests", "/.github"]
 
 [dependencies]
 serde = { workspace = true }
