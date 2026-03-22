@@ -6,15 +6,12 @@
 
 ## NEXT
 
-- [ ] Publish Homebrew tap (create github.com/d-cryptic/homebrew-claude-sentinel repo, fill in sha256s)
-- [ ] Publish to crates.io (`cargo publish -p cst-cli`)
-- [ ] `cst add-key --source op://...` interactive source picker in CLI wizard
+- [ ] Publish Homebrew tap (create github.com/d-cryptic/homebrew-claude-sentinel repo, cut v0.1.0 tag, fill in sha256s from release artifacts)
+- [ ] Publish to crates.io (`./scripts/publish.sh` after `cargo login`)
 
 ## BACKLOG
 
-- [ ] Alfred workflow (parallel to Raycast scripts)
-- [ ] Windows installer (.msi via cargo-wix)
-- [ ] `cst team` conflict resolution (merge strategies for settings overrides)
+(empty — all items shipped)
 
 ## DONE
 
@@ -78,3 +75,10 @@
   - Security invariants: auth/ never synced (both to-repo and from-repo), describe() never leaks secrets
   - Edge cases: Windows CRLF, glob boundary cases, URL normalisation idempotency, env var with empty value
   - Behaviour documentation: both-fields double-count, null usage, zero tokens
+- [x] cst add-key: interactive source picker (Keychain/1Password/Doppler/EnvVar); --source flag for CI use
+- [x] Alfred workflow: 5 script commands (switch, status, remaining, list, do-switch) in alfred/
+- [x] cst team: MergeStrategy (Theirs/Ours/Merge), pull_with_strategy(), detect_conflicts(); 178 unit tests total
+- [x] Windows installer: wix/main.wxs + License.rtf + docs/WINDOWS-INSTALLER.md (cargo-wix)
+- [x] Crates.io metadata: keywords, categories, readme, homepage in cst-core + cst-cli Cargo.toml
+- [x] scripts/publish.sh: crates.io publish script with --dry-run support
+- [x] homebrew-tap/README.md: tap setup guide with sha256 fill-in instructions
