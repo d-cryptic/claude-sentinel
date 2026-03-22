@@ -82,6 +82,19 @@ eval "$(cst shell-init)"
 
 This injects a `precmd` hook that checks for pending switches from the daemon every time your prompt refreshes.
 
+## Monitoring with `cst top`
+
+The `cst top` live dashboard shows auto-switch state in real time:
+
+- **QUOTA TIMERS** panel: active rate-limit countdown timers with profile name and time until refill
+- **RECENT SWITCHES** panel: last 5 switch events with `from → to | reason`
+- **Header**: daemon status indicator (ON/OFF)
+- **Per-profile table**: rate limit hit count per session
+
+The dashboard refreshes every 1 second. Run `cst top` to watch auto-switch activity as it happens.
+
+The interactive TUI (`cst` with no args) also has an AUTO-SWITCH tab showing the same scheduler entries and a HISTORY tab with the last 30 switch events.
+
 ## Quota Reset Estimates
 
 | Plan | Estimate |

@@ -86,68 +86,173 @@ Three TOML/JSON layers, deep-merged in order (later wins):
 
 Result written to `…/sessions/{s}/.claude/settings.json` on each activate.
 
-## TUI Architecture
+## Interactive TUI
 
-`cst top` (live dashboard) and `cst` (interactive navigator) both use ratatui + crossterm.
+Running `cst` with no subcommand (or `cst tui`) launches a full-screen ratatui terminal UI.
 
 ```
-cst top
+cst (no args) → tui::run()
   │
-  ├── TopState::load() — initial data load
-  ├── run_loop() — 100ms poll loop, 1s refresh cycle
-  │     ├── terminal.draw(render) — ratatui frame
-  │     ├── crossterm event poll — keyboard (q, r)
-  │     └── state.refresh() — re-reads all profiles/stats/scheduler
+  ├── AppState::load()
+  │     ├── GlobalConfig::load() → current profile:session
+  │     ├── ProfileManager::list() → all profiles with auth types
+  │     ├── SessionManager::list() → sessions per profile
+  │     ├── SchedulerState::load() → active rate-limit timers
+  │     └── SwitchLog::last_n(30) → recent switch history
   │
-  └── render()
-        ├── render_header() — active profile, daemon status, spinner
-        ├── render_body() — profile/session table with token/cost columns
-        ├── render_scheduler() — active rate-limit countdown timers
-        ├── render_recent_events() — last 5 switch events
-        └── render_footer() — key hints
-
-cst (TUI navigator)
+  ├── Render loop (100ms poll interval)
+  │     ├── Tab bar: PROFILES | SESSIONS | AUTO-SWITCH | HISTORY
+  │     ├── Content area (varies by tab)
+  │     └── Footer: active profile + keybinding help
   │
-  ├── AppState::load() — profiles, sessions, scheduler, history
-  ├── 4 tabs: Profiles | Sessions | Auto-Switch | History
-  ├── Enter → writes pending-switch + updates GlobalConfig
-  └── r → refresh all data
+  └── Key handling
+        ├── Tab/Right → next tab, BackTab/Left → prev tab
+        ├── j/k/Down/Up → navigate lists
+        ├── Enter → write pending-switch file + update GlobalConfig
+        ├── r/R → refresh all state from disk
+        └── q/Q / Ctrl+C → quit
 ```
+
+### Tab content
+
+| Tab | Layout | Data source |
+|-----|--------|-------------|
+| PROFILES | 40% list + 60% detail panel | `ProfileManager::list()` |
+| SESSIONS | Full-width list with active marker | `SessionManager::list()` for selected profile |
+| AUTO-SWITCH | Scheduler entries with countdown | `SchedulerState::load()` |
+| HISTORY | Last 30 switch events | `SwitchLog::last_n(30)` |
+
+The Profiles tab detail panel shows: name, auth type, active/inactive status, and session list.
+
+When the user presses Enter on a profile, the TUI writes a pending-switch file via `daemon::write_pending_switch()` and updates `GlobalConfig`. The shell's precmd hook picks up the pending switch on the next prompt.
+
+**Key files**:
+- `crates/cst-cli/src/tui/mod.rs` — terminal setup, event loop, key handling
+- `crates/cst-cli/src/tui/model.rs` — `AppState`, `Tab` enum, `ProfileRow`, navigation logic
+- `crates/cst-cli/src/tui/view.rs` — ratatui widget rendering (tab bar, profiles, sessions, auto-switch, history, footer)
+
+## Live Dashboard (`cst top`)
+
+`cst top` is a read-only, htop-style dashboard that auto-refreshes every 1 second.
+
+```
+cst top → top::run()
+  │
+  ├── TopState::load()
+  │     ├── GlobalConfig → active profile:session
+  │     ├── daemon_core::is_running() → daemon status
+  │     ├── SchedulerState::load() → quota countdown timers
+  │     ├── SwitchLog::last_n(5) → recent switch events
+  │     └── Per-profile loop:
+  │           ProfileManager::list() → profiles
+  │           SessionManager::list() → sessions per profile
+  │           SessionStats::load() → tokens_in, tokens_out, rate_limit_hits, cost
+  │
+  ├── Layout (4 vertical sections):
+  │     ├── Header (3 lines): braille spinner + "CST TOP" + active profile + daemon indicator
+  │     ├── Body (flex): table with PROFILE, SESSION, AUTH, IN, OUT, RATE LIMITS, COST $, LAST USED
+  │     ├── Bottom (5 lines): 50/50 horizontal split — QUOTA TIMERS | RECENT SWITCHES
+  │     └── Footer (1 line): "q quit  r refresh  (refreshes every 1s)"
+  │
+  └── Refresh cycle: TopState::refresh() called every 1 second via Instant::elapsed check
+```
+
+The header includes a braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) that rotates each tick as a liveness indicator. The active profile row is bolded with a `▶` marker. Token counts are formatted as `k` (thousands) or `M` (millions). The daemon status shows `● DAEMON ON` (bold) or `○ DAEMON OFF` (gray).
+
+**Key file**: `crates/cst-cli/src/commands/top.rs`
 
 ## Terminal Integrations
 
+Both integrations load `GlobalConfig` and `SchedulerState` to output compact profile status.
+
 ### Starship
-`cst starship` outputs a single line: `🛡 profile:session` optionally followed by `⚠ Xh Ym` when a rate-limit timer is active. The shell runs this command each prompt draw via Starship's `custom.cst` module.
+
+`cst starship` outputs a single line for Starship's `custom.cst` module:
+
+```
+🛡 work:backend           (normal — no rate limits)
+🛡 work:backend ⚠ 2h3m   (rate-limit timer active)
+(empty output)             (no profile active — module hidden)
+```
+
+The `build_quota_indicator()` helper checks `SchedulerState` for entries where `switched_back == false` and returns the first entry's `time_until_refill()`.
+
+`cst starship --config` prints the TOML snippet to add to `starship.toml`.
 
 ### tmux
-`cst tmux` outputs a tmux-markup string with `#[fg=...]` colour codes showing the current profile:session. Added to `status-right` with `status-interval 5`.
+
+`cst tmux` outputs a tmux-markup string:
+
+```
+#[fg=colour255,bold]work:backend#[default]⚠ 2h3m
+#[fg=colour240]no profile#[default]
+```
+
+`cst tmux --config` prints the `tmux.conf` snippet with `status-right` and `status-interval 5`.
+
+**Key file**: `crates/cst-cli/src/commands/integrations.rs`
 
 ## Tauri Desktop App
 
 ```
 apps/desktop/
+  index.html              Vite entry point
+  package.json            React + Tauri deps (bun)
+  vite.config.ts          Vite config
+  tsconfig.json           TypeScript config
   src/
-    App.tsx               4-tab shell, status bar
+    main.tsx              React entry point
+    App.tsx               Root component: tab bar (4 tabs), content router, status bar
     styles/
-      neubrutalism.css    Design system (see docs/DESIGN.md)
+      neubrutalism.css    Complete design system (see docs/DESIGN.md)
     components/
-      ProfileManager.tsx  Split-pane: profile list + detail
+      ProfileManager.tsx  Split-pane: 260px profile list + flex detail panel
       SessionGrid.tsx     Card grid, click-to-switch
-      AutoSwitchConfig.tsx  Daemon control, timers, switch log
-      StatsPanel.tsx      ASCII bar chart, token/cost tables
+      AutoSwitchConfig.tsx  Daemon control, rate-limit timers, switch log
+      StatsPanel.tsx      Token usage table, cost estimates
     store/
-      profiles.ts         Zustand — profiles, active, CRUD
-      daemon.ts           Zustand — daemon status, switch log
+      profiles.ts         Zustand store — profiles, active, CRUD actions
+      daemon.ts           Zustand store — daemon status, switch log, scheduler
+    hooks/                Custom React hooks
   src-tauri/
     src/
-      main.rs             Tauri app entry point
-      tray.rs             System tray: left-click toggle, menu
+      main.rs             Tauri app entry point (calls lib::run())
+      lib.rs              Tauri builder: plugins (shell, notification), tray setup, invoke handler
+      tray.rs             System tray: left-click toggles window, right-click menu
       commands/
-        profiles.rs       list/get/switch/create/delete
-        sessions.rs       list/create/delete
-        daemon.rs         status/start/stop/switch-log
-        stats.rs          aggregate stats across all sessions
+        mod.rs            Command module re-exports
+        profiles.rs       list_profiles, get_active, switch_profile, create_profile, delete_profile
+        sessions.rs       list_sessions, create_session, delete_session
+        daemon.rs         daemon_status, daemon_start, daemon_stop, get_switch_log, get_scheduler_state
+        stats.rs          get_stats
 ```
+
+### Data flow
+
+```
+React Component → invoke("command_name", args) → Tauri IPC
+  → Rust command handler → cst_core:: function
+    → reads/writes ~/.claude-sentinel/
+  → returns Result<T> → JSON → React state update → re-render
+```
+
+### System tray
+
+The tray menu contains:
+- **Active: {profile}:{session}** — disabled informational item
+- **Open Sentinel** — shows/focuses the main window
+- **Quit** — exits the app
+
+Left-click on the tray icon toggles window visibility (show/hide). The tray is configured with `show_menu_on_left_click(false)` so left-click is reserved for the toggle.
+
+### Plugins
+
+- `tauri-plugin-shell` — run external commands
+- `tauri-plugin-notification` — native notifications (macOS/Linux/Windows)
+
+### Frontend refresh
+
+The app polls `list_profiles` and `daemon_status` every 30 seconds via `setInterval` to keep the UI current without requiring WebSocket or event subscriptions.
 
 The Tauri backend is a thin adapter: all logic delegates to `cst-core`. Tauri commands call the same functions used by `cst-cli`.
 
