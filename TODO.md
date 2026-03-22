@@ -2,13 +2,13 @@
 
 ## IN PROGRESS
 
-- [ ] cst doctor: full health check implementation
-- [ ] cst remaining: real quota tracking from history.jsonl
+(nothing — v1 feature set complete)
 
 ## NEXT
 
 - [ ] CHANGELOG.md (auto-generate via git-cliff)
 - [ ] Homebrew tap formula
+- [ ] cst remaining: parse live history.jsonl for real-time token counts (currently reads stats.json)
 
 ## BACKLOG
 
@@ -55,6 +55,8 @@
 - [x] apps/desktop: Tauri v2 app — system tray, neubrutalism B&W design system
 - [x] apps/desktop: 4-tab window (Profiles, Sessions, Auto-Switch, Stats)
 - [x] apps/desktop: Zustand stores, ProfileManager, SessionGrid, StatsPanel
+- [x] cst doctor: full 5-group health check (claude binary, data dir, profiles/sessions, daemon, shell)
+- [x] cst remaining: token usage, rate-limit timers, cross-profile summary
 - [x] cst-cli: cst top live real-time dashboard (htop-style, 1s refresh)
 - [x] cst-cli: cst starship — Starship prompt module + --config
 - [x] cst-cli: cst tmux — tmux status bar segment + --config

@@ -264,11 +264,34 @@ List all profiles and their sessions.
 
 ### `cst remaining`
 
-Show quota used %, tokens today, and estimated time to reset.
+Show quota usage for the active profile — token counts, estimated cost, rate-limit timers with countdown, and a cross-profile summary.
+
+```
+Profile  : work:backend
+
+── Token Usage (current session) ──────────────────────────
+  Tokens in   : 15.2k
+  Tokens out  : 4.5k
+  Total       : 19.7k
+  Rate limits : 0
+  Last used   : 2026-03-22 19:00 UTC
+
+── All Sessions (work) ─────────────────────────────────────
+  Tokens in   : 45.3k
+  Tokens out  : 12.1k
+
+── Quota Status ────────────────────────────────────────────
+  No active rate limits detected.
+
+── All Profiles ────────────────────────────────────────────
+  work [ACTIVE]        in:   45.3k  out:   12.1k
+  personal             in:    8.1k  out:    2.3k
+  api-backup           in:  120.5k  out:   45.2k  ⚠ 3 rate limits
+```
 
 ### `cst stats [<profile:session>]`
 
-Show usage statistics. Includes: session count, rate limit hits, tokens in/out, estimated API cost.
+Show detailed usage statistics. Includes: session count, rate limit hits, tokens in/out, estimated API cost.
 
 ```bash
 cst stats
@@ -277,7 +300,20 @@ cst stats work:backend
 
 ### `cst doctor`
 
-Health check -- validates all profiles, symlinks, credentials, daemon, and settings merge.
+Full health check — 5 check groups with pass/fail output:
+
+| Group | What is checked |
+|-------|----------------|
+| Claude Code | `claude` binary in PATH, `~/.claude/`, `~/.claude.json` |
+| Data Directory | `~/.claude-sentinel/`, profiles dir, `config.toml` |
+| Profiles & Sessions | Profile config, auth files, session `.claude/` symlinks |
+| Daemon | PID file health, running state, stale broadcast files |
+| Shell Integration | `eval "$(cst shell-init)"` present in rc file |
+
+```bash
+cst doctor           # full check, exits 1 on failures
+cst validate <name>  # per-profile credential + session detail
+```
 
 ### `cst sync`
 
