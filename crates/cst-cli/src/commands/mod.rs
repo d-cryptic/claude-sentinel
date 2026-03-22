@@ -15,6 +15,7 @@ pub mod stats;
 pub mod status;
 pub mod switch_all;
 pub mod sync;
+pub mod team;
 pub mod templates;
 pub mod top;
 pub mod tui;

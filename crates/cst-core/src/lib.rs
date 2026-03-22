@@ -18,6 +18,7 @@ pub mod profile;
 pub mod session;
 pub mod shell;
 pub mod stats;
+pub mod team_sync;
 pub mod templates;
 
 // Re-export top-level types

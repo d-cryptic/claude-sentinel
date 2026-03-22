@@ -192,6 +192,12 @@ enum Commands {
         config: bool,
     },
 
+    /// Team profile sharing — push/pull configs via a shared git remote.
+    Team {
+        #[command(subcommand)]
+        action: TeamCommands,
+    },
+
     /// Generate shell tab completions.
     Completions {
         /// Shell: bash, zsh, fish, powershell
@@ -239,6 +245,24 @@ enum SessionCommands {
         #[arg(long = "to")]
         to_profile: String,
     },
+}
+
+#[derive(Subcommand)]
+enum TeamCommands {
+    /// Connect to a shared git remote for profile sync.
+    Init {
+        /// Git remote URL (SSH or HTTPS).
+        remote_url: String,
+        /// Branch to use (default: main).
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
+    /// Push local profile configs to the remote.
+    Push,
+    /// Pull profile configs from the remote.
+    Pull,
+    /// Show sync status.
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -333,6 +357,14 @@ async fn main() -> Result<()> {
                 commands::integrations::tmux_segment()
             }
         }
+        Some(Commands::Team { action }) => match action {
+            TeamCommands::Init { remote_url, branch } => {
+                commands::team::init(&remote_url, &branch)
+            }
+            TeamCommands::Push => commands::team::push(),
+            TeamCommands::Pull => commands::team::pull(),
+            TeamCommands::Status => commands::team::status(),
+        },
         Some(Commands::Templates) => commands::templates::list(),
         Some(Commands::Init { yes, shell, no_daemon }) => {
             commands::init::run(yes, shell.as_deref(), !no_daemon).await
