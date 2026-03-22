@@ -2,24 +2,18 @@
 
 ## IN PROGRESS
 
-(nothing — v1 feature set complete)
+(nothing — backlog items complete)
 
 ## NEXT
 
-- [ ] CHANGELOG.md (auto-generate via git-cliff)
 - [ ] Homebrew tap formula
-- [ ] cst remaining: parse live history.jsonl for real-time token counts (currently reads stats.json)
+- [ ] 1Password / Doppler integration for API keys
 
 ## BACKLOG
 
-- [ ] Homebrew tap for easy install
-- [ ] 1Password / Doppler integration for API keys
 - [ ] Team profile sharing (git-based config sync)
 - [ ] Raycast / Alfred extension for quick switching
-- [ ] Smart round-robin: distribute usage across profiles
-- [ ] Git remote URL → auto-detect profile (.cstrc)
 - [ ] Windows installer (.msi)
-- [ ] GitHub Actions CI (release binaries via goreleaser)
 
 ## DONE
 
@@ -41,7 +35,7 @@
 - [x] cst-core: ProfileHooks (pre/post switch_in/out, non-fatal sh -c execution)
 - [x] cst-core: SessionStats (session_count, rate_limit_hits, tokens, cost estimate)
 - [x] cst-core: built-in profile templates (pro/max/api/bedrock/vertex)
-- [x] cst-core: auto_switch/config.rs — AutoSwitchConfig with fallback chain + schedule
+- [x] cst-core: auto_switch/config.rs — AutoSwitchConfig with fallback chain + schedule + round_robin
 - [x] cst-core: auto_switch/detector.rs — rate-limit pattern detection
 - [x] cst-core: auto_switch/switch_log.rs — persistent JSONL event log
 - [x] cst-core: auto_switch/scheduler.rs — quota reset scheduler + time_until_refill
@@ -61,9 +55,15 @@
 - [x] cst-cli: cst starship — Starship prompt module + --config
 - [x] cst-cli: cst tmux — tmux status bar segment + --config
 - [x] .github/workflows/ci.yml — test + clippy + release build (ubuntu + macos)
+- [x] .github/workflows/release.yml — release binaries on tag push (4 targets)
 - [x] docs: USAGE.md, DESIGN.md, CONTRIBUTING.md, ARCHITECTURE.md updated
 - [x] cst-core: broadcast.rs — BroadcastSwitch, check_broadcast (TTL-based, per-shell ID tracking)
 - [x] cst-cli: cst switch-all <from> <to> — broadcast switch to all open shells
 - [x] cst-cli: cst session switch <session> --to <profile> — per-session profile reassignment
-- [x] shell-init: precmd hook updated for broadcast check (zsh/bash/fish)
-- [x] 87 unit tests passing; binary runs correctly
+- [x] shell-init: precmd hook updated for broadcast check + .cstrc auto-detect (zsh/bash/fish)
+- [x] cst-core: auto_detect.rs — .cstrc walk-up + git remote URL pattern matching
+- [x] cst-core: history_parser.rs — parse history.jsonl for live token counts
+- [x] cst-cli: _auto-detect hidden command + auto-detect-status
+- [x] cst remaining: prefers live history.jsonl counts over cached stats.json
+- [x] cst-core: RoundRobin config section in AutoSwitchConfig
+- [x] 113 unit tests passing; binary runs correctly

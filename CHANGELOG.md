@@ -10,6 +10,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 
 #### Core library (`cst-core`)
+- **`.cstrc` auto-detect** — `auto_detect.rs`: walk directory tree for `.cstrc` (TOML), match `profile`/`session` fields; `[[auto_detect]]` entries with `git_remote_pattern` globs for git-URL-based selection; glob normalises SSH/HTTPS URLs automatically; 13 unit tests
+- **Live `history.jsonl` parser** — `history_parser.rs`: scan Claude Code's JSONL history for `usage` objects, sum `input_tokens`/`output_tokens`/cache fields; `estimated_cost_usd()` helper; gracefully skips invalid lines; 10 unit tests
+- **Round-robin config** — `RoundRobin` struct in `auto_switch/config.rs`: `[round_robin]` TOML section with `pool`, `rotate_after_tokens`, `enabled`; daemon can distribute usage across a pool of profiles to maximise uptime
+
+#### CLI (`cst-cli`)
+- **`cst _auto-detect <dir> <current>`** — hidden command called by precmd hook; emits env exports when `.cstrc` requests a different profile than currently active
+- **`cst auto-detect-status [<dir>]`** — show what `.cstrc` would activate in a directory without switching
+- **`cst remaining` live counts** — now prefers live `history.jsonl` token counts over cached `stats.json`; shows `(live)` label when real data is available
+
+#### Shell integration
+- `_cst_check_switch` precmd hook now has a third step (after pending-switch and broadcast): checks `.cstrc` via `cst _auto-detect $PWD $CST_CURRENT`
+- Supports zsh, bash, fish
+
+#### Infrastructure
+- **`.github/workflows/release.yml`** — triggered on `v*` tags; builds `cst` for 4 targets (aarch64/x86_64 × macOS/Linux), uses `cross` for aarch64 Linux; creates GitHub Release with `.tar.gz` + `.sha256` artifacts; extracts release notes from `CHANGELOG.md`
+- 113 unit tests (up from 87)
+
+#### Core library (`cst-core`)
 - **Profile management** — CRUD, clone, rename, import, templates (pro/max/api/bedrock/vertex)
 - **Session management** — CRUD, tag, archive, symlink setup for shared global config
 - **Auth modules** — OAuth symlink swap, API key pool (Keychain/AES-GCM), AWS Bedrock env injection, Google Vertex AI env injection
