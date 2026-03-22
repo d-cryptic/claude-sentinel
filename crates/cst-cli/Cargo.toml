@@ -22,6 +22,7 @@ clap_complete = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 dirs = { workspace = true }
+which = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
