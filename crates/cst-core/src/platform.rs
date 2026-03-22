@@ -7,9 +7,16 @@ use std::path::PathBuf;
 
 /// Root data directory for claude-sentinel.
 ///
+/// Checks the `CST_DATA_DIR` environment variable first, allowing
+/// integration tests to point to a temporary directory.
+///
+/// Fallback hierarchy:
 /// - macOS/Linux: `~/.claude-sentinel/`
 /// - Windows:     `%APPDATA%\claude-sentinel\`
 pub fn data_dir() -> PathBuf {
+    if let Ok(d) = std::env::var("CST_DATA_DIR") {
+        return PathBuf::from(d);
+    }
     dirs::data_local_dir()
         .unwrap_or_else(|| dirs::home_dir().expect("home dir must exist"))
         .join("claude-sentinel")
@@ -105,6 +112,14 @@ mod tests {
     #[test]
     fn test_data_dir_is_absolute() {
         assert!(data_dir().is_absolute());
+    }
+
+    #[test]
+    fn test_data_dir_respects_env_override() {
+        let _guard = std::env::var("CST_DATA_DIR").ok();
+        std::env::set_var("CST_DATA_DIR", "/tmp/cst-test-data");
+        assert_eq!(data_dir(), PathBuf::from("/tmp/cst-test-data"));
+        std::env::remove_var("CST_DATA_DIR");
     }
 
     #[test]
