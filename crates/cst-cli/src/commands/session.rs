@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cst_core::{platform, session::SessionManager, GlobalConfig};
+use cst_core::{platform, session::SessionManager, validate_profile_name, validate_session_name, GlobalConfig};
 
 pub async fn dispatch(action: crate::SessionCommands) -> Result<()> {
     match action {
@@ -21,6 +21,7 @@ fn current_profile() -> Result<String> {
 }
 
 pub fn new(name: &str, tag: Option<&str>) -> Result<()> {
+    validate_session_name(name)?;
     let profile = current_profile()?;
     let mgr = SessionManager::new(platform::profile_dir(&profile));
     let session = mgr.create(name, &platform::global_claude_dir())?;
@@ -53,6 +54,7 @@ pub fn list(profile: Option<&str>) -> Result<()> {
 }
 
 pub fn remove(name: &str) -> Result<()> {
+    validate_session_name(name)?;
     let profile = current_profile()?;
     SessionManager::new(platform::profile_dir(&profile)).delete(name)?;
     println!("✓ Deleted session '{name}'");
@@ -60,6 +62,7 @@ pub fn remove(name: &str) -> Result<()> {
 }
 
 pub fn tag(name: &str, description: &str) -> Result<()> {
+    validate_session_name(name)?;
     let profile = current_profile()?;
     SessionManager::new(platform::profile_dir(&profile)).tag(name, description)?;
     println!("✓ Tagged '{name}': {description}");
@@ -67,6 +70,7 @@ pub fn tag(name: &str, description: &str) -> Result<()> {
 }
 
 pub fn archive(name: &str) -> Result<()> {
+    validate_session_name(name)?;
     let profile = current_profile()?;
     SessionManager::new(platform::profile_dir(&profile)).archive(name)?;
     println!("✓ Archived '{name}'");
@@ -78,6 +82,8 @@ pub fn archive(name: &str) -> Result<()> {
 /// If the session doesn't exist in `to_profile`, it is created there first.
 /// Then writes a pending-switch file so the current shell picks up the change.
 pub fn switch(name: &str, to_profile: &str) -> Result<()> {
+    validate_session_name(name)?;
+    validate_profile_name(to_profile)?;
     let from_profile = current_profile()?;
 
     // Ensure the target profile exists

@@ -258,6 +258,12 @@ pub fn pull_with_strategy(strategy: Option<MergeStrategy>) -> Result<()> {
     for entry in std::fs::read_dir(&profiles_dir)? {
         let entry = entry?;
         let profile_name = entry.file_name().to_string_lossy().to_string();
+        // Reject any name that does not satisfy the slug invariant — a malicious
+        // or compromised remote could otherwise write outside ~/.claude-sentinel/.
+        if let Err(e) = crate::profile::validate_profile_name(&profile_name) {
+            tracing::warn!("skipping remote profile {profile_name:?}: {e}");
+            continue;
+        }
         if !cfg.should_sync(&profile_name) {
             continue;
         }
@@ -364,6 +370,11 @@ fn copy_profile_to_repo(name: &str, profiles_dir: &Path, repo: &Path) -> Result<
         for entry in std::fs::read_dir(&sessions_src)? {
             let entry = entry?;
             let sname = entry.file_name().to_string_lossy().to_string();
+            // Reject traversal attempts from the remote repo.
+            if let Err(e) = crate::session::validate_session_name(&sname) {
+                tracing::warn!("skipping remote session {sname:?}: {e}");
+                continue;
+            }
             let sdst = dst.join("sessions").join(&sname);
             std::fs::create_dir_all(&sdst)?;
             for file in SESSION_SYNC_FILES {

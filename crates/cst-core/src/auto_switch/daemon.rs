@@ -177,15 +177,26 @@ fn trigger_switch(
         return Ok(());
     }
 
-    // Pick next profile in chain (skip if it's the current one)
+    // Pick next profile in chain (skip if it's the current one).
+    // Validate names before using them as path components or shell exports;
+    // auto-switch.toml is user-editable and could contain crafted values.
     let target = as_cfg
         .fallback_chain
         .iter()
-        .find(|p| p.as_str() != current_profile)
+        .find(|p| {
+            if p.as_str() == current_profile {
+                return false;
+            }
+            if let Err(e) = crate::profile::validate_profile_name(p) {
+                tracing::warn!("skipping invalid fallback chain entry {p:?}: {e}");
+                return false;
+            }
+            true
+        })
         .cloned();
 
     let Some(target_profile) = target else {
-        tracing::warn!("fallback chain has no alternative to {current_profile}");
+        tracing::warn!("fallback chain has no valid alternative to {current_profile}");
         return Ok(());
     };
 
