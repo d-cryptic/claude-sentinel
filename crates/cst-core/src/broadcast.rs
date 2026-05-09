@@ -40,10 +40,13 @@ impl BroadcastSwitch {
     /// Write a new broadcast to disk. Overwrites any previous broadcast.
     pub fn write(from: &str, to: &str) -> Result<Self> {
         let now = Utc::now();
+        // Include nanoseconds in the ID to guarantee uniqueness even when two
+        // broadcasts are written within the same second.
+        let id = format!("{}.{}", now.to_rfc3339(), now.timestamp_subsec_nanos());
         let b = Self {
             from: from.to_string(),
             to: to.to_string(),
-            id: now.to_rfc3339(),
+            id,
             expires_at: now + Duration::seconds(DEFAULT_TTL_SECONDS),
         };
         let path = Self::path();

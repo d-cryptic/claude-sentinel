@@ -101,11 +101,16 @@ impl ProfileManager {
             profiles_dir: profiles_dir.into(),
         }
     }
+}
 
+impl Default for ProfileManager {
     /// Create a manager using the default platform data dir.
-    pub fn default() -> Self {
+    fn default() -> Self {
         Self::new(platform::profiles_dir())
     }
+}
+
+impl ProfileManager {
 
     fn profile_dir(&self, name: &str) -> PathBuf {
         self.profiles_dir.join(name)
@@ -219,10 +224,18 @@ impl ProfileManager {
     }
 }
 
+const MAX_PROFILE_NAME_LEN: usize = 64;
+
 /// Validate that a profile name is a safe slug.
 fn validate_name(name: &str) -> Result<()> {
     if name.is_empty() {
         bail!("profile name cannot be empty");
+    }
+    if name.len() > MAX_PROFILE_NAME_LEN {
+        bail!(
+            "profile name must be at most {MAX_PROFILE_NAME_LEN} characters (got {})",
+            name.len()
+        );
     }
     if !name
         .chars()
@@ -286,6 +299,17 @@ mod tests {
         assert!(mgr.create("has space", AuthType::OAuth).is_err());
         assert!(mgr.create("", AuthType::OAuth).is_err());
         assert!(mgr.create("has/slash", AuthType::OAuth).is_err());
+        // Name exceeding max length must be rejected
+        let long_name = "a".repeat(MAX_PROFILE_NAME_LEN + 1);
+        let err = mgr.create(&long_name, AuthType::OAuth).unwrap_err();
+        assert!(err.to_string().contains("at most"), "expected max-length error: {err}");
+    }
+
+    #[test]
+    fn test_create_name_at_max_length_succeeds() {
+        let (mgr, _dir) = manager();
+        let name = "a".repeat(MAX_PROFILE_NAME_LEN);
+        assert!(mgr.create(&name, AuthType::OAuth).is_ok());
     }
 
     #[test]

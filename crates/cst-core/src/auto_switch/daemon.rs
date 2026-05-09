@@ -44,28 +44,6 @@ pub fn write_pending_switch(profile: &str, session: &str) -> Result<()> {
     Ok(())
 }
 
-/// Find all `history.jsonl` files under the sentinel data dir to watch.
-fn find_history_files() -> Vec<PathBuf> {
-    let profiles_dir = platform::profiles_dir();
-    let mut files = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&profiles_dir) {
-        for entry in entries.flatten() {
-            let profile = entry.file_name().to_string_lossy().to_string();
-            let sessions_dir = entry.path().join("sessions");
-            if let Ok(sessions) = std::fs::read_dir(&sessions_dir) {
-                for s_entry in sessions.flatten() {
-                    let history = s_entry.path().join(".claude").join("history.jsonl");
-                    if history.exists() {
-                        files.push(history);
-                    }
-                    // Also watch the session dir for new files
-                    let _ = profile.as_str(); // used in closure below via captured var
-                }
-            }
-        }
-    }
-    files
-}
 
 /// Core daemon loop. Runs until cancelled.
 ///
@@ -267,18 +245,19 @@ fn check_scheduler_switchbacks(
         .map(|e| e.profile.clone())
         .collect();
 
+    if pending.is_empty() {
+        return Ok(());
+    }
+
+    // Load config once for the whole switchback batch, not once per profile.
+    let mut cfg = GlobalConfig::load()?;
+
     for profile in pending {
         tracing::info!("quota refilled for {profile}, switching back");
 
-        let cfg = GlobalConfig::load()?;
-        let current = cfg.current_profile.clone();
-
-        // Write pending switch back to original profile
-        write_pending_switch(&profile, "default")?;
-
         let event = SwitchEvent {
             timestamp: chrono::Utc::now(),
-            from_profile: current,
+            from_profile: cfg.current_profile.clone(),
             from_session: cfg.current_session.clone(),
             to_profile: profile.clone(),
             to_session: "default".to_string(),
@@ -287,10 +266,11 @@ fn check_scheduler_switchbacks(
         };
         switch_log.append(&event)?;
 
-        let mut new_cfg = cfg;
-        new_cfg.current_profile = profile.clone();
-        new_cfg.current_session = "default".to_string();
-        new_cfg.save()?;
+        write_pending_switch(&profile, "default")?;
+
+        cfg.current_profile = profile.clone();
+        cfg.current_session = "default".to_string();
+        cfg.save()?;
 
         scheduler.mark_switched_back(&profile);
         scheduler.save()?;
