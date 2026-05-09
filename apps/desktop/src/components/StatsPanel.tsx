@@ -33,15 +33,25 @@ function AsciiBar({ value, max, width = 20 }: { value: number; max: number; widt
 export function StatsPanel() {
   const [stats, setStats] = useState<StatsDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<StatsDto[]>("get_stats", { profile: null, session: null })
-      .then(setStats)
+      .then((data) => { setStats(data); setError(null); })
+      .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) {
     return <div className="pane" style={{ color: "#999" }}>Loading stats...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="pane" style={{ color: "#c00", textAlign: "center", paddingTop: 40 }}>
+        Failed to load stats: {error}
+      </div>
+    );
   }
 
   if (stats.length === 0) {

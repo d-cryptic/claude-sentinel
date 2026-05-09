@@ -27,7 +27,7 @@ export default function App() {
     // Refresh every 30s
     const interval = setInterval(() => { fetchProfiles(); fetchDaemon(); }, 30_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchProfiles, fetchDaemon]);
 
   return (
     <div className="app-shell">

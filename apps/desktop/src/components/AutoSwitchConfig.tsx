@@ -9,7 +9,7 @@ export function AutoSwitchConfig() {
     fetch();
     const interval = setInterval(fetch, 10_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetch]);
 
   const active = schedulerEntries.filter((e) => !e.switched_back);
 

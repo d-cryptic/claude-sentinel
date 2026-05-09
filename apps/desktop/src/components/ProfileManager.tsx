@@ -6,6 +6,7 @@ export function ProfileManager() {
     useProfileStore();
   const [selected, setSelected] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newAuth, setNewAuth] = useState("oauth");
 
@@ -103,16 +104,40 @@ export function ProfileManager() {
 
             <hr className="divider" />
 
-            <button
-              className="btn btn-danger"
-              onClick={() => {
-                if (confirm(`Delete profile "${selectedProfile.name}"?`)) {
-                  deleteProfile(selectedProfile.name).then(() => setSelected(null));
-                }
-              }}
-            >
-              Delete Profile
-            </button>
+            {confirmDelete === selectedProfile.name ? (
+              <div
+                role="alertdialog"
+                aria-label={`Confirm deletion of profile "${selectedProfile.name}"`}
+                style={{ display: "flex", gap: 8, alignItems: "center" }}
+              >
+                <span style={{ fontSize: 12 }}>Delete "{selectedProfile.name}"?</span>
+                <button
+                  className="btn btn-danger btn-sm"
+                  autoFocus
+                  onClick={() => {
+                    deleteProfile(selectedProfile.name).then(() => {
+                      setSelected(null);
+                      setConfirmDelete(null);
+                    });
+                  }}
+                >
+                  Confirm
+                </button>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => setConfirmDelete(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                className="btn btn-danger"
+                onClick={() => setConfirmDelete(selectedProfile.name)}
+              >
+                Delete Profile
+              </button>
+            )}
           </>
         ) : (
           <div style={{ color: "#999", padding: 16 }}>
