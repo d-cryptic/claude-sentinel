@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cst_core::{platform, stats::SessionStats};
+use cst_core::{platform, stats::SessionStats, validate_profile_name, validate_session_name};
 
 pub fn run(profile_session: Option<&str>) -> Result<()> {
     let (profile, session) = match profile_session {
@@ -9,6 +9,8 @@ pub fn run(profile_session: Option<&str>) -> Result<()> {
             (cfg.current_profile, cfg.current_session)
         }
     };
+    validate_profile_name(&profile)?;
+    validate_session_name(&session)?;
     let session_dir = platform::session_dir(&profile, &session);
     let stats = SessionStats::load(&session_dir)?;
     println!("Profile : {profile}:{session}");

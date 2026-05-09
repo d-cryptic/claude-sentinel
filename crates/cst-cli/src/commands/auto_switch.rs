@@ -13,6 +13,7 @@ pub async fn dispatch(action: crate::AutoSwitchCommands) -> Result<()> {
 }
 
 pub fn configure(profile: &str) -> Result<()> {
+    cst_core::profile::validate_profile_name(profile)?;
     let profile_dir = platform::profile_dir(profile);
     if !profile_dir.exists() {
         anyhow::bail!("profile '{profile}' not found");
@@ -63,6 +64,7 @@ pub fn log() -> Result<()> {
 }
 
 pub fn test_chain(profile: &str) -> Result<()> {
+    cst_core::profile::validate_profile_name(profile)?;
     let profile_dir = platform::profile_dir(profile);
     if !profile_dir.exists() {
         anyhow::bail!("profile '{profile}' not found");

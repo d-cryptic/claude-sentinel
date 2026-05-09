@@ -54,7 +54,7 @@ export const useProfileStore = create<ProfileStore>((set, get) => ({
     } catch (e) {
       set({ error: String(e), loading: false });
       // Re-sync to show actual backend state
-      await get().fetch().catch(() => {});
+      await get().fetch().catch((e) => { console.error("re-sync after switch failure:", e); });
     }
   },
 

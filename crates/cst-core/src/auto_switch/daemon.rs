@@ -79,7 +79,9 @@ pub async fn run_daemon() -> Result<()> {
     // Also watch ~/.claude/ for global history
     let global_claude = platform::global_claude_dir();
     if global_claude.exists() {
-        let _ = watcher.watch(&global_claude, RecursiveMode::NonRecursive);
+        if let Err(e) = watcher.watch(&global_claude, RecursiveMode::NonRecursive) {
+            tracing::warn!("could not watch {}: {e}", global_claude.display());
+        }
     }
 
     let switch_log = SwitchLog::open();

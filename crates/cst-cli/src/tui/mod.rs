@@ -84,18 +84,25 @@ fn handle_key(state: &mut AppState, code: KeyCode, modifiers: KeyModifiers) {
                     .unwrap_or_else(|| "default".to_string());
 
                 // Write pending switch (shell will pick it up via precmd)
-                let _ = cst_core::auto_switch::daemon::write_pending_switch(&profile, &session);
+                match cst_core::auto_switch::daemon::write_pending_switch(&profile, &session) {
+                    Err(e) => {
+                        state.status_message = format!("Error switching: {e}");
+                    }
+                    Ok(()) => {
+                        // Update global config
+                        if let Ok(mut cfg) = cst_core::config::GlobalConfig::load() {
+                            cfg.current_profile = profile.clone();
+                            cfg.current_session = session.clone();
+                            if let Err(e) = cfg.save() {
+                                tracing::warn!("failed to save active profile in TUI: {e}");
+                            }
+                        }
 
-                // Update global config
-                if let Ok(mut cfg) = cst_core::config::GlobalConfig::load() {
-                    cfg.current_profile = profile.clone();
-                    cfg.current_session = session.clone();
-                    let _ = cfg.save();
+                        state.current_profile = profile.clone();
+                        state.current_session = session.clone();
+                        state.status_message = format!("Switched to {}:{}", profile, session);
+                    }
                 }
-
-                state.current_profile = profile.clone();
-                state.current_session = session.clone();
-                state.status_message = format!("Switched to {}:{}", profile, session);
 
                 // Refresh display
                 state.refresh();

@@ -182,7 +182,9 @@ pub fn push() -> Result<()> {
     ensure_repo_exists(&repo, &cfg)?;
 
     // Pull first to avoid non-fast-forward rejections
-    let _ = git(&repo, &["pull", "--rebase", "origin", &cfg.branch]);
+    if let Err(e) = git(&repo, &["pull", "--rebase", "origin", &cfg.branch]) {
+        tracing::warn!("pre-push rebase failed (continuing): {e}. If push fails, run: cst team pull --strategy theirs");
+    }
 
     // Copy profile configs into repo
     let profiles_dir = platform::profiles_dir();

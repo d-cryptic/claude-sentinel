@@ -99,6 +99,7 @@ pub fn add_key(
 ) -> Result<()> {
     use cst_core::auth::apikey::ApiKeyPool;
     use cst_core::auth::secrets::SecretSource;
+    cst_core::profile::validate_profile_name(profile)?;
 
     let keys_path = platform::profile_dir(profile)
         .join("auth")

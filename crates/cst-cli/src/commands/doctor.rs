@@ -300,6 +300,7 @@ pub fn run() -> Result<()> {
 
 /// Per-profile validation with full credential checks.
 pub fn validate(profile: &str) -> Result<()> {
+    cst_core::profile::validate_profile_name(profile)?;
     let pm = ProfileManager::new(platform::profiles_dir());
     let p = pm.load(profile)?;
 

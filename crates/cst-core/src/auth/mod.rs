@@ -103,8 +103,9 @@ pub fn activate_profile_auth_with(
             if bedrock_path.exists() {
                 let contents = std::fs::read_to_string(&bedrock_path)?;
                 let cfg: bedrock::BedrockConfig = toml::from_str(&contents)?;
-                if let Ok(evars) = cfg.env_vars() {
-                    vars.extend(evars);
+                match cfg.env_vars() {
+                    Ok(evars) => vars.extend(evars),
+                    Err(e) => tracing::warn!("Bedrock env_vars failed for {profile_name}: {e}"),
                 }
             }
             let _ = oauth::deactivate();
@@ -114,8 +115,9 @@ pub fn activate_profile_auth_with(
             if vertex_path.exists() {
                 let contents = std::fs::read_to_string(&vertex_path)?;
                 let cfg: vertex::VertexConfig = toml::from_str(&contents)?;
-                if let Ok(evars) = cfg.env_vars() {
-                    vars.extend(evars);
+                match cfg.env_vars() {
+                    Ok(evars) => vars.extend(evars),
+                    Err(e) => tracing::warn!("Vertex env_vars failed for {profile_name}: {e}"),
                 }
             }
             let _ = oauth::deactivate();
