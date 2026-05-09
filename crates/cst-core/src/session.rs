@@ -161,7 +161,7 @@ impl SessionManager {
 /// - settings.json: created as empty placeholder (filled on activate)
 /// - agents/, rules/, skills/, commands/, hooks.json, statusline.sh, CLAUDE.md: symlinks to global
 /// - projects/, history.jsonl: local (not symlinked)
-pub fn setup_claude_dir(claude_dir: &Path, global_claude_dir: &Path) -> Result<()> {
+pub(crate) fn setup_claude_dir(claude_dir: &Path, global_claude_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(claude_dir)?;
     // Create local-only dirs
     std::fs::create_dir_all(claude_dir.join("projects"))?;

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use cst_core::auth::activate_profile_auth;
 use cst_core::env_overlay::EnvOverlay;
 use cst_core::profile::Profile;
 use cst_core::shell::{env_exports, parse_profile_session, shell_init_code, ShellKind};
@@ -39,67 +40,31 @@ pub fn env_cmd(profile_session: &str) -> Result<()> {
         format!("{}:{}", profile, session),
     );
 
-    // Load profile to determine auth type and inject auth-specific vars
+    // Load profile, fire lifecycle hooks, and inject auth-specific vars.
+    // activate_profile_auth handles OAuth symlink swap, API key injection, etc.
     // (best-effort — if profile doesn't exist yet, just export CLAUDE_CONFIG_DIR)
     if profile_dir.exists() {
-        let profile_toml = platform::profile_dir(&profile).join("profile.toml");
+        let profile_toml = profile_dir.join("profile.toml");
         if profile_toml.exists() {
-            let contents = std::fs::read_to_string(&profile_toml)?;
-            let p: Profile = toml::from_str(&contents)?;
-
             // Fire pre-switch-in hook (non-fatal)
-            let _ = p.hooks.run_pre_switch_in();
-
-            match p.auth_type {
-                cst_core::profile::AuthType::Api => {
-                    // Load key from keychain (slot 1 by default)
-                    let keys_path = profile_dir.join("auth").join("api_keys.toml");
-                    if keys_path.exists() {
-                        let contents = std::fs::read_to_string(&keys_path)?;
-                        let pool: cst_core::auth::apikey::ApiKeyPool = toml::from_str(&contents)?;
-                        if let Some(&slot) = pool.sorted_slots().first() {
-                            if let Ok(evars) = pool.env_vars_for_slot(slot) {
-                                vars.extend(evars);
-                            }
-                        }
-                    }
-                    // Ensure OAuth symlink is removed
-                    let _ = cst_core::auth::oauth::deactivate();
-                }
-                cst_core::profile::AuthType::OAuth => {
-                    if let Err(e) = cst_core::auth::oauth::activate(&profile_dir.join("auth")) {
-                        tracing::warn!("OAuth symlink activation failed for {profile} — ~/.claude.json may be stale: {e}");
-                    }
-                    // Clear API key if set
-                    vars.insert("ANTHROPIC_API_KEY".to_string(), String::new());
-                }
-                cst_core::profile::AuthType::Bedrock => {
-                    let bedrock_path = profile_dir.join("auth").join("aws.toml");
-                    if bedrock_path.exists() {
-                        let contents = std::fs::read_to_string(&bedrock_path)?;
-                        let cfg: cst_core::auth::bedrock::BedrockConfig =
-                            toml::from_str(&contents)?;
-                        if let Ok(evars) = cfg.env_vars() {
-                            vars.extend(evars);
-                        }
-                    }
-                    let _ = cst_core::auth::oauth::deactivate();
-                }
-                cst_core::profile::AuthType::Vertex => {
-                    let vertex_path = profile_dir.join("auth").join("vertex.toml");
-                    if vertex_path.exists() {
-                        let contents = std::fs::read_to_string(&vertex_path)?;
-                        let cfg: cst_core::auth::vertex::VertexConfig = toml::from_str(&contents)?;
-                        if let Ok(evars) = cfg.env_vars() {
-                            vars.extend(evars);
-                        }
-                    }
-                    let _ = cst_core::auth::oauth::deactivate();
+            if let Ok(contents) = std::fs::read_to_string(&profile_toml) {
+                if let Ok(p) = toml::from_str::<Profile>(&contents) {
+                    let _ = p.hooks.run_pre_switch_in();
                 }
             }
 
+            // Auth activation: shared with broadcast_switch_check
+            match activate_profile_auth(&profile) {
+                Ok(auth_vars) => vars.extend(auth_vars),
+                Err(e) => tracing::warn!("auth activation failed for {profile}: {e}"),
+            }
+
             // Fire post-switch-in hook (non-fatal)
-            let _ = p.hooks.run_post_switch_in();
+            if let Ok(contents) = std::fs::read_to_string(&profile_toml) {
+                if let Ok(p) = toml::from_str::<Profile>(&contents) {
+                    let _ = p.hooks.run_post_switch_in();
+                }
+            }
         }
     }
 

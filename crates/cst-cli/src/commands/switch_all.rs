@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use cst_core::{
+    auth::activate_profile_auth,
     broadcast::{check_broadcast, BroadcastSwitch},
     platform,
     profile::ProfileManager,
@@ -77,64 +78,13 @@ pub fn broadcast_switch_check(current: &str, already_applied_id: &str) -> Result
     // Mark this broadcast as applied in this shell
     vars.insert("CST_BROADCAST_ID".to_string(), broadcast.id.clone());
 
-    // Load the profile to inject auth-specific vars (best-effort)
-    let profile_toml = platform::profile_dir(&to_profile).join("profile.toml");
-    if profile_toml.exists() {
-        if let Ok(contents) = std::fs::read_to_string(&profile_toml) {
-            if let Ok(p) = toml::from_str::<cst_core::profile::Profile>(&contents) {
-                inject_auth_vars(&p, &to_profile, &mut vars);
-            }
-        }
+    // Inject auth-specific vars using the shared activation path.
+    // This includes the OAuth symlink swap that was previously skipped here.
+    match activate_profile_auth(&to_profile) {
+        Ok(auth_vars) => vars.extend(auth_vars),
+        Err(e) => tracing::warn!("auth activation failed for {to_profile}: {e}"),
     }
 
     println!("{}", env_exports(&vars, &shell));
     Ok(())
-}
-
-/// Inject auth-specific env vars into the map (mirrors shell.rs env_cmd logic).
-fn inject_auth_vars(
-    p: &cst_core::profile::Profile,
-    profile_name: &str,
-    vars: &mut HashMap<String, String>,
-) {
-    let profile_dir = platform::profile_dir(profile_name);
-    match p.auth_type {
-        cst_core::profile::AuthType::Api => {
-            let keys_path = profile_dir.join("auth").join("api_keys.toml");
-            if let Ok(contents) = std::fs::read_to_string(&keys_path) {
-                if let Ok(pool) = toml::from_str::<cst_core::auth::apikey::ApiKeyPool>(&contents) {
-                    if let Some(&slot) = pool.sorted_slots().first() {
-                        if let Ok(evars) = pool.env_vars_for_slot(slot) {
-                            vars.extend(evars);
-                        }
-                    }
-                }
-            }
-        }
-        cst_core::profile::AuthType::Bedrock => {
-            let aws_path = profile_dir.join("auth").join("aws.toml");
-            if let Ok(contents) = std::fs::read_to_string(&aws_path) {
-                if let Ok(creds) =
-                    toml::from_str::<cst_core::auth::bedrock::BedrockConfig>(&contents)
-                {
-                    if let Ok(evars) = creds.env_vars() {
-                        vars.extend(evars);
-                    }
-                }
-            }
-        }
-        cst_core::profile::AuthType::Vertex => {
-            let vertex_path = profile_dir.join("auth").join("vertex.toml");
-            if let Ok(contents) = std::fs::read_to_string(&vertex_path) {
-                if let Ok(cfg) = toml::from_str::<cst_core::auth::vertex::VertexConfig>(&contents) {
-                    if let Ok(evars) = cfg.env_vars() {
-                        vars.extend(evars);
-                    }
-                }
-            }
-        }
-        cst_core::profile::AuthType::OAuth => {
-            // OAuth: symlink swap is handled separately; nothing to inject here
-        }
-    }
 }
