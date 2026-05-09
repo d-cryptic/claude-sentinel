@@ -95,17 +95,38 @@ impl SwitchLog {
         Ok(events)
     }
 
-    /// Return the last N events.
+    /// Return the last N events without loading the entire file into memory.
+    ///
+    /// Reads only the last `READ_TAIL_BYTES` of the log, which covers several
+    /// hundred events at typical JSON sizes. Falls back to `read_all` only when
+    /// the file is smaller than the tail window.
     pub fn last_n(&self, n: usize) -> Result<Vec<SwitchEvent>> {
-        let all = self.read_all()?;
-        Ok(all
-            .into_iter()
-            .rev()
-            .take(n)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect())
+        use std::io::{Read, Seek, SeekFrom};
+        const READ_TAIL_BYTES: u64 = 64 * 1024; // 64 KiB ≈ ~300 events at ~200 bytes each
+
+        if !self.path.exists() {
+            return Ok(Vec::new());
+        }
+        let mut f = std::fs::File::open(&self.path)?;
+        let len = f.metadata()?.len();
+        let start = len.saturating_sub(READ_TAIL_BYTES);
+        f.seek(SeekFrom::Start(start))?;
+        let mut buf = Vec::new();
+        f.read_to_end(&mut buf)?;
+        let tail = String::from_utf8_lossy(&buf);
+
+        let mut events: Vec<SwitchEvent> = tail
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+
+        // If we may have cut the file mid-way, we might have more events than n;
+        // take the last n in chronological order.
+        if events.len() > n {
+            events = events.into_iter().rev().take(n).collect::<Vec<_>>().into_iter().rev().collect();
+        }
+        Ok(events)
     }
 }
 

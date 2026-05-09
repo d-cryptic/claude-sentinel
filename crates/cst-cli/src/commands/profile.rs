@@ -274,7 +274,12 @@ fn parse_source_flag(src: &str) -> Result<cst_core::auth::secrets::SecretSource>
 fn read_line() -> Result<String> {
     use std::io::BufRead;
     let stdin = std::io::stdin();
-    Ok(stdin.lock().lines().next().unwrap_or(Ok(String::new()))?)
+    stdin
+        .lock()
+        .lines()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("unexpected end of stdin — this command requires interactive input"))?
+        .map_err(Into::into)
 }
 
 fn read_password() -> Result<String> {

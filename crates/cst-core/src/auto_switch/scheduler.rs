@@ -85,7 +85,11 @@ impl SchedulerState {
         auto_switch_back: bool,
     ) {
         let now = Utc::now();
-        let refill_at = now + Duration::minutes(estimate_minutes as i64);
+        // Cap to 1 year to prevent hostile auto-switch.toml values from wrapping
+        // to negative i64 and producing a refill_at in the past.
+        const MAX_ESTIMATE_MINUTES: u64 = 60 * 24 * 365;
+        let capped = estimate_minutes.min(MAX_ESTIMATE_MINUTES) as i64;
+        let refill_at = now + Duration::minutes(capped);
         // Remove any existing entry for this profile
         self.entries.retain(|e| e.profile != profile);
         self.entries.push(RateLimitEntry {
