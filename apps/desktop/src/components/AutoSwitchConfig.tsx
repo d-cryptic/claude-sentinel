@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useDaemonStore } from "../store/daemon";
 
 export function AutoSwitchConfig() {
-  const { status, switchLog, schedulerEntries, fetch, start, stop } =
+  const { status, switchLog, schedulerEntries, error, fetch, start, stop } =
     useDaemonStore();
 
   useEffect(() => {
@@ -15,6 +15,14 @@ export function AutoSwitchConfig() {
 
   return (
     <div className="pane">
+      {error && (
+        <div
+          role="alert"
+          style={{ color: "#c00", background: "#fff0f0", padding: "8px 12px", marginBottom: 12, border: "2px solid #c00", fontSize: 12 }}
+        >
+          Error: {error}
+        </div>
+      )}
       {/* Daemon status */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-title">Daemon</div>

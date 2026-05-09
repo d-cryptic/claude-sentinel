@@ -170,16 +170,27 @@ impl ProfileManager {
     }
 
     /// Delete a profile and all its sessions.
+    ///
+    /// Returns an error if the profile is currently active, preventing
+    /// `GlobalConfig` from pointing to a nonexistent profile.
     pub fn delete(&self, name: &str) -> Result<()> {
         let dir = self.profile_dir(name);
         if !dir.exists() {
             bail!("profile '{name}' not found");
+        }
+        if let Ok(cfg) = crate::config::GlobalConfig::load() {
+            if cfg.current_profile == name {
+                bail!("cannot delete active profile '{name}' — switch to another profile first");
+            }
         }
         std::fs::remove_dir_all(dir)?;
         Ok(())
     }
 
     /// Rename a profile.
+    ///
+    /// If the profile is currently active, updates `GlobalConfig` so the
+    /// active profile pointer stays valid after the rename.
     pub fn rename(&self, old: &str, new: &str) -> Result<()> {
         validate_profile_name(new)?;
         let old_dir = self.profile_dir(old);
@@ -195,6 +206,13 @@ impl ProfileManager {
         let mut profile = Profile::load(&new_dir)?;
         profile.name = new.to_string();
         profile.save(&new_dir)?;
+        // Keep GlobalConfig in sync if this was the active profile
+        if let Ok(mut cfg) = crate::config::GlobalConfig::load() {
+            if cfg.current_profile == old {
+                cfg.current_profile = new.to_string();
+                let _ = cfg.save();
+            }
+        }
         Ok(())
     }
 

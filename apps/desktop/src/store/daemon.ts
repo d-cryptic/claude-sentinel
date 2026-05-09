@@ -29,6 +29,7 @@ interface DaemonStore {
   status: DaemonStatus;
   switchLog: SwitchEvent[];
   schedulerEntries: SchedulerEntry[];
+  error: string | null;
   fetch: () => Promise<void>;
   start: () => Promise<void>;
   stop: () => Promise<void>;
@@ -38,25 +39,38 @@ export const useDaemonStore = create<DaemonStore>((set) => ({
   status: { running: false, active_timers: 0 },
   switchLog: [],
   schedulerEntries: [],
+  error: null,
 
   fetch: async () => {
-    const [status, switchLog, schedulerEntries] = await Promise.all([
-      invoke<DaemonStatus>("daemon_status"),
-      invoke<SwitchEvent[]>("get_switch_log"),
-      invoke<SchedulerEntry[]>("get_scheduler_state"),
-    ]);
-    set({ status, switchLog, schedulerEntries });
+    try {
+      const [status, switchLog, schedulerEntries] = await Promise.all([
+        invoke<DaemonStatus>("daemon_status"),
+        invoke<SwitchEvent[]>("get_switch_log"),
+        invoke<SchedulerEntry[]>("get_scheduler_state"),
+      ]);
+      set({ status, switchLog, schedulerEntries, error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
   },
 
   start: async () => {
-    await invoke("daemon_start");
-    const status = await invoke<DaemonStatus>("daemon_status");
-    set({ status });
+    try {
+      await invoke("daemon_start");
+      const status = await invoke<DaemonStatus>("daemon_status");
+      set({ status, error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
   },
 
   stop: async () => {
-    await invoke("daemon_stop");
-    const status = await invoke<DaemonStatus>("daemon_status");
-    set({ status });
+    try {
+      await invoke("daemon_stop");
+      const status = await invoke<DaemonStatus>("daemon_status");
+      set({ status, error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
   },
 }));
