@@ -220,13 +220,16 @@ fn trigger_switch(
 
     tracing::info!("auto-switched from {current_profile} to {target_profile}: {reason}");
 
-    // macOS notification (best-effort)
+    // macOS notification (best-effort).
+    // Escape " in profile names to prevent AppleScript string injection.
     #[cfg(target_os = "macos")]
     if as_cfg.notify {
+        let safe_target = target_profile.replace('"', "\\\"");
+        let safe_current = current_profile.replace('"', "\\\"");
         let _ = std::process::Command::new("osascript")
             .arg("-e")
             .arg(format!(
-                r#"display notification "Switched to {target_profile}" with title "Claude Sentinel" subtitle "Rate limit on {current_profile}""#
+                r#"display notification "Switched to {safe_target}" with title "Claude Sentinel" subtitle "Rate limit on {safe_current}""#
             ))
             .spawn();
     }

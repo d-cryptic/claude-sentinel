@@ -99,7 +99,9 @@ pub fn test_chain(profile: &str) -> Result<()> {
 
 pub fn pause(minutes: Option<u64>) -> Result<()> {
     let pause_file = platform::data_dir().join("auto-switch-paused");
-    std::fs::create_dir_all(pause_file.parent().unwrap())?;
+    if let Some(parent) = pause_file.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     match minutes {
         Some(m) => {
             let resume_at = chrono::Utc::now() + chrono::Duration::minutes(m as i64);

@@ -94,7 +94,9 @@ impl TeamSyncConfig {
     /// Save to `~/.claude-sentinel/team-sync.toml`.
     pub fn save(&self) -> Result<()> {
         let path = config_path();
-        std::fs::create_dir_all(path.parent().unwrap())?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         std::fs::write(&path, toml::to_string_pretty(self)?)?;
         Ok(())
     }

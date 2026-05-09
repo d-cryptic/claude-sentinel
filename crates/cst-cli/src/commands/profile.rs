@@ -103,7 +103,9 @@ pub fn add_key(
     let keys_path = platform::profile_dir(profile)
         .join("auth")
         .join("api_keys.toml");
-    std::fs::create_dir_all(keys_path.parent().unwrap())?;
+    if let Some(parent) = keys_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let mut pool: ApiKeyPool = if keys_path.exists() {
         let c = std::fs::read_to_string(&keys_path)?;
         toml::from_str(&c)?
