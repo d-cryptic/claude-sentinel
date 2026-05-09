@@ -443,6 +443,7 @@ fn copy_profile_toml_without_hooks_with_strategy(
     Ok(())
 }
 
+#[cfg(test)]
 fn copy_profile_from_repo(src: &Path, dst: &Path) -> Result<()> {
     copy_profile_from_repo_with_strategy(src, dst, &MergeStrategy::Theirs)
 }

@@ -123,9 +123,9 @@ impl SwitchLog {
             .collect();
 
         // If we may have cut the file mid-way, we might have more events than n;
-        // take the last n in chronological order.
+        // drop the excess from the front to keep the last n in chronological order.
         if events.len() > n {
-            events = events.into_iter().rev().take(n).collect::<Vec<_>>().into_iter().rev().collect();
+            events.drain(..events.len() - n);
         }
         Ok(events)
     }

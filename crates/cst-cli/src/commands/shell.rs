@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cst_core::auth::activate_profile_auth;
+use cst_core::auth::{activate_profile_auth, activate_profile_auth_with};
 use cst_core::env_overlay::EnvOverlay;
 use cst_core::profile::Profile;
 use cst_core::shell::{env_exports, parse_profile_session, shell_init_code, ShellKind};
@@ -40,29 +40,27 @@ pub fn env_cmd(profile_session: &str) -> Result<()> {
         format!("{}:{}", profile, session),
     );
 
-    // Load profile, fire lifecycle hooks, and inject auth-specific vars.
-    // activate_profile_auth handles OAuth symlink swap, API key injection, etc.
+    // Load profile once, then fire lifecycle hooks and inject auth-specific vars.
+    // Parsing profile.toml once avoids TOCTOU and three redundant disk reads.
+    // activate_profile_auth_with handles OAuth symlink swap, API key injection, etc.
     // (best-effort — if profile doesn't exist yet, just export CLAUDE_CONFIG_DIR)
     if profile_dir.exists() {
         let profile_toml = profile_dir.join("profile.toml");
-        if profile_toml.exists() {
-            // Fire pre-switch-in hook (non-fatal)
-            if let Ok(contents) = std::fs::read_to_string(&profile_toml) {
-                if let Ok(p) = toml::from_str::<Profile>(&contents) {
-                    let _ = p.hooks.run_pre_switch_in();
+        if let Ok(contents) = std::fs::read_to_string(&profile_toml) {
+            if let Ok(p) = toml::from_str::<Profile>(&contents) {
+                let _ = p.hooks.run_pre_switch_in();
+
+                match activate_profile_auth_with(&profile, Some(&p)) {
+                    Ok(auth_vars) => vars.extend(auth_vars),
+                    Err(e) => tracing::warn!("auth activation failed for {profile}: {e}"),
                 }
-            }
 
-            // Auth activation: shared with broadcast_switch_check
-            match activate_profile_auth(&profile) {
-                Ok(auth_vars) => vars.extend(auth_vars),
-                Err(e) => tracing::warn!("auth activation failed for {profile}: {e}"),
-            }
-
-            // Fire post-switch-in hook (non-fatal)
-            if let Ok(contents) = std::fs::read_to_string(&profile_toml) {
-                if let Ok(p) = toml::from_str::<Profile>(&contents) {
-                    let _ = p.hooks.run_post_switch_in();
+                let _ = p.hooks.run_post_switch_in();
+            } else {
+                // Profile file exists but couldn't be parsed — fall back to name-only auth
+                match activate_profile_auth(&profile) {
+                    Ok(auth_vars) => vars.extend(auth_vars),
+                    Err(e) => tracing::warn!("auth activation failed for {profile}: {e}"),
                 }
             }
         }

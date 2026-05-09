@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useProfileStore } from "../store/profiles";
 
 export function ProfileManager() {
-  const { profiles, active, switchTo, createProfile, deleteProfile, fetch } =
+  const { profiles, active, switchTo, createProfile, deleteProfile, fetch, error } =
     useProfileStore();
   const [selected, setSelected] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -16,12 +16,31 @@ export function ProfileManager() {
   const handleCreate = async () => {
     if (!newName.trim()) return;
     await createProfile(newName.trim(), newAuth);
-    setShowNew(false);
-    setNewName("");
+    // Only close the modal if creation succeeded (no error in store)
+    if (!useProfileStore.getState().error) {
+      setShowNew(false);
+      setNewName("");
+    }
   };
 
   return (
     <div className="split" style={{ height: "100%" }}>
+      {error && (
+        <div
+          role="alert"
+          style={{
+            gridColumn: "1 / -1",
+            background: "#fff0f0",
+            border: "2px solid #c00",
+            color: "#c00",
+            padding: "6px 12px",
+            fontSize: 12,
+            marginBottom: 8,
+          }}
+        >
+          {error}
+        </div>
+      )}
       {/* Left: profile list */}
       <div className="split-left">
         <div
@@ -117,11 +136,13 @@ export function ProfileManager() {
                 <span style={{ fontSize: 12 }}>Delete "{selectedProfile.name}"?</span>
                 <button
                   className="btn btn-danger btn-sm"
-                  onClick={() => {
-                    deleteProfile(selectedProfile.name).then(() => {
+                  onClick={async () => {
+                    await deleteProfile(selectedProfile.name);
+                    // Only clear selection if deletion succeeded
+                    if (!useProfileStore.getState().error) {
                       setSelected(null);
                       setConfirmDelete(null);
-                    });
+                    }
                   }}
                 >
                   Confirm

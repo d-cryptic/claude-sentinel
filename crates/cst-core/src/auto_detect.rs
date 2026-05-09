@@ -133,7 +133,7 @@ fn git_remote_url(dir: &Path) -> Option<String> {
 /// Glob match with `*` as a multi-character wildcard.
 ///
 /// Both `pattern` and `value` are first normalised (SSH/HTTPS → bare host/path).
-pub fn glob_match(pattern: &str, value: &str) -> bool {
+pub(crate) fn glob_match(pattern: &str, value: &str) -> bool {
     let v = normalise_git_url(value);
     let p = normalise_git_url(pattern);
     let pv: Vec<char> = p.chars().collect();
@@ -363,6 +363,16 @@ profile = "work"
     fn glob_star_matches_empty_segment() {
         // "github.com/myco/*" should also match "github.com/myco/" (empty segment after /)
         assert!(glob_match("github.com/myco/*", "github.com/myco/"));
+    }
+
+    #[test]
+    fn glob_double_star_matches_any() {
+        // Consecutive stars should behave like a single star
+        assert!(glob_match("**", "anything"));
+        assert!(glob_match("**", ""));
+        assert!(glob_match("a**b", "axyzb"));
+        assert!(glob_match("a**b", "ab")); // zero chars between a and b
+        assert!(!glob_match("a**b", "axyzc")); // must end with b
     }
 
     #[test]
