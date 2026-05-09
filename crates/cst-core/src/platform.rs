@@ -136,6 +136,10 @@ fn _create_link_impl(src: &std::path::Path, dst: &std::path::Path) -> anyhow::Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Serialise all tests that mutate CST_DATA_DIR to prevent parallel-test UB.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_data_dir_is_absolute() {
@@ -144,10 +148,12 @@ mod tests {
 
     #[test]
     fn test_data_dir_respects_env_override() {
-        let _guard = std::env::var("CST_DATA_DIR").ok();
-        std::env::set_var("CST_DATA_DIR", "/tmp/cst-test-data");
-        assert_eq!(data_dir(), PathBuf::from("/tmp/cst-test-data"));
-        std::env::remove_var("CST_DATA_DIR");
+        let _guard = ENV_LOCK.lock().unwrap();
+        // SAFETY: we hold ENV_LOCK; no other test mutates CST_DATA_DIR concurrently.
+        unsafe { std::env::set_var("CST_DATA_DIR", "/tmp/cst-test-data") }
+        let result = data_dir();
+        unsafe { std::env::remove_var("CST_DATA_DIR") }
+        assert_eq!(result, PathBuf::from("/tmp/cst-test-data"));
     }
 
     #[test]

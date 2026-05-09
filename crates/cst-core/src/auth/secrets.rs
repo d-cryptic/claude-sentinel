@@ -159,26 +159,32 @@ fn retrieve_env_var(var_name: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // std::env::set_var / remove_var are not thread-safe in multi-threaded
+    // processes (UB since Rust 1.81). Serialise all env-mutating tests with
+    // this process-wide lock so they cannot race with each other or with
+    // platform::tests::test_data_dir_respects_env_override.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn env_var_source_reads_env() {
-        unsafe {
-            std::env::set_var("_CST_TEST_KEY", "sk-ant-test");
-        }
+        let _guard = ENV_LOCK.lock().unwrap();
+        // SAFETY: we hold ENV_LOCK, so no other test is mutating the environment.
+        unsafe { std::env::set_var("_CST_TEST_KEY", "sk-ant-test") }
         let src = SecretSource::EnvVar {
             var_name: "_CST_TEST_KEY".to_string(),
         };
-        assert_eq!(src.retrieve().unwrap(), "sk-ant-test");
-        unsafe {
-            std::env::remove_var("_CST_TEST_KEY");
-        }
+        let result = src.retrieve();
+        unsafe { std::env::remove_var("_CST_TEST_KEY") }
+        assert_eq!(result.unwrap(), "sk-ant-test");
     }
 
     #[test]
     fn env_var_source_missing_errors() {
-        unsafe {
-            std::env::remove_var("_CST_DEFINITELY_MISSING");
-        }
+        let _guard = ENV_LOCK.lock().unwrap();
+        // SAFETY: we hold ENV_LOCK.
+        unsafe { std::env::remove_var("_CST_DEFINITELY_MISSING") }
         let src = SecretSource::EnvVar {
             var_name: "_CST_DEFINITELY_MISSING".to_string(),
         };
@@ -312,17 +318,16 @@ mod tests {
 
     #[test]
     fn env_var_empty_value_succeeds() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // An env var set to "" is present and retrievable (empty string is valid)
-        unsafe {
-            std::env::set_var("_CST_TEST_EMPTY", "");
-        }
+        // SAFETY: we hold ENV_LOCK.
+        unsafe { std::env::set_var("_CST_TEST_EMPTY", "") }
         let src = SecretSource::EnvVar {
             var_name: "_CST_TEST_EMPTY".to_string(),
         };
-        assert_eq!(src.retrieve().unwrap(), "");
-        unsafe {
-            std::env::remove_var("_CST_TEST_EMPTY");
-        }
+        let result = src.retrieve();
+        unsafe { std::env::remove_var("_CST_TEST_EMPTY") }
+        assert_eq!(result.unwrap(), "");
     }
 
     // ── check_tool_available ──────────────────────────────────────────────

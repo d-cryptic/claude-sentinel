@@ -296,12 +296,16 @@ enum AutoSwitchCommands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialise tracing subscriber (respects RUST_LOG)
+    // Initialise tracing subscriber (respects RUST_LOG).
+    // MUST write to stderr: several commands (cst _env, cst _broadcast-switch,
+    // cst _auto-detect) write shell code to stdout that the user's shell eval's.
+    // Any tracing output on stdout would corrupt that eval context.
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env().add_directive("cst=info".parse()?),
         )
         .with_target(false)
+        .with_writer(std::io::stderr)
         .init();
 
     let cli = Cli::parse();

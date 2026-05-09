@@ -3,7 +3,7 @@
 //! Each slot can store its secret in the OS Keychain (default), 1Password,
 //! Doppler, or a plain environment variable.  See `auth::secrets::SecretSource`.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use super::{secrets::SecretSource, EnvMap};
@@ -91,13 +91,25 @@ impl ApiKeyPool {
     }
 
     /// Remove a key slot.
+    ///
+    /// Only deletes from the OS Keychain when the slot's source is
+    /// `SecretSource::Keychain`. External providers (1Password, Doppler, env
+    /// var) manage their own secrets; calling keychain deletion with an empty
+    /// account name would touch a spurious Keychain entry.
     pub fn remove_key(&mut self, slot: u8) -> Result<()> {
         let entry = self
             .keys
             .iter()
             .find(|k| k.slot == slot)
             .ok_or_else(|| anyhow::anyhow!("slot {slot} not found"))?;
-        delete_from_keychain(&entry.keychain_account)?;
+        if let SecretSource::Keychain { account } = &entry.source {
+            let acct = if account.is_empty() {
+                &entry.keychain_account
+            } else {
+                account
+            };
+            delete_from_keychain(acct)?;
+        }
         self.keys.retain(|k| k.slot != slot);
         Ok(())
     }
@@ -222,5 +234,42 @@ mod tests {
         assert_eq!(desc.len(), 1);
         assert_eq!(desc[0].0, 1);
         assert!(desc[0].1.contains("keychain:work-slot1"));
+    }
+
+    #[test]
+    fn test_remove_external_source_does_not_touch_keychain() {
+        // Removing a 1Password slot must not attempt keychain deletion
+        // (which would call keyring::Entry::new with an empty account name).
+        let mut pool = ApiKeyPool {
+            keys: vec![ApiKeyEntry {
+                slot: 1,
+                source: super::SecretSource::OnePassword {
+                    reference: "op://Personal/Claude/cred".to_string(),
+                },
+                keychain_account: String::new(), // empty — external slots have no account
+                note: String::new(),
+            }],
+        };
+        // Should succeed without touching the OS Keychain
+        let result = pool.remove_key(1);
+        assert!(result.is_ok(), "remove_key for external slot must not error: {result:?}");
+        assert!(pool.keys.is_empty());
+    }
+
+    #[test]
+    fn test_remove_keychain_source_uses_source_account() {
+        // When source is Keychain, use the account from the source field.
+        // The keychain_account legacy field is a fallback for older entries.
+        // Here we verify the slot is removed from the pool regardless of
+        // whether the keychain call succeeds (it will fail in tests without a
+        // real keychain, but that's fine — we're testing pool removal logic).
+        let mut pool = ApiKeyPool {
+            keys: vec![make_entry(1, "work-slot1")],
+        };
+        // delete_from_keychain ignores errors via `let _ = entry.delete_credential()`
+        // so this should always return Ok even in a test environment.
+        let result = pool.remove_key(1);
+        assert!(result.is_ok());
+        assert!(pool.keys.is_empty());
     }
 }

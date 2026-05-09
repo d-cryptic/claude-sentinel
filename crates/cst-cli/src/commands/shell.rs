@@ -64,7 +64,9 @@ pub fn env_cmd(profile_session: &str) -> Result<()> {
                     let _ = cst_core::auth::oauth::deactivate();
                 }
                 cst_core::profile::AuthType::OAuth => {
-                    let _ = cst_core::auth::oauth::activate(&profile_dir.join("auth"));
+                    if let Err(e) = cst_core::auth::oauth::activate(&profile_dir.join("auth")) {
+                        tracing::warn!("OAuth symlink activation failed for {profile} — ~/.claude.json may be stale: {e}");
+                    }
                     // Clear API key if set
                     vars.insert("ANTHROPIC_API_KEY".to_string(), String::new());
                 }
@@ -110,19 +112,23 @@ pub fn env_cmd(profile_session: &str) -> Result<()> {
         let profile_override = profile_dir.join("settings-override.json");
         let session_override = session_dir.join("settings-override.json");
         let output = platform::claude_config_dir(&profile, &session).join("settings.json");
-        let _ = merge::merge_and_write(
+        if let Err(e) = merge::merge_and_write(
             &global_settings,
             &profile_override,
             &session_override,
             &output,
-        );
+        ) {
+            tracing::warn!("settings merge failed for {profile}:{session} — Claude Code may use stale settings: {e}");
+        }
     }
 
     // Update global config
     let mut cfg = cst_core::GlobalConfig::load().unwrap_or_default();
-    cfg.current_profile = profile;
-    cfg.current_session = session;
-    let _ = cfg.save();
+    cfg.current_profile = profile.clone();
+    cfg.current_session = session.clone();
+    if let Err(e) = cfg.save() {
+        tracing::warn!("failed to save active profile/session to config: {e}");
+    }
 
     // Output exports
     print!("{}", env_exports(&vars, &shell));

@@ -528,7 +528,11 @@ fn git_commit(repo: &Path, cfg: &TeamSyncConfig, message: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    // Serialise tests that mutate CST_DATA_DIR to prevent parallel-test UB.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn should_sync_all_by_default() {
@@ -965,9 +969,11 @@ mod tests {
         std::fs::write(local_profile.join("settings-override.json"), r#"{"a":1}"#).unwrap();
 
         // Temporarily set CST_DATA_DIR for the test
-        std::env::set_var("CST_DATA_DIR", &data_dir);
+        let _guard = ENV_LOCK.lock().unwrap();
+        // SAFETY: we hold ENV_LOCK.
+        unsafe { std::env::set_var("CST_DATA_DIR", &data_dir) }
         let result = detect_conflicts(&cfg);
-        std::env::remove_var("CST_DATA_DIR");
+        unsafe { std::env::remove_var("CST_DATA_DIR") }
 
         let conflicts = result.unwrap();
         // profile.toml differs, settings-override.json is the same

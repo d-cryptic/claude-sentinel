@@ -276,6 +276,6 @@ fn read_line() -> Result<String> {
 }
 
 fn read_password() -> Result<String> {
-    // Simple stdin read for now — rpassword crate can be added later
-    read_line()
+    rpassword::prompt_password("API key (input hidden): ")
+        .map_err(|e| anyhow::anyhow!("failed to read password: {e}"))
 }

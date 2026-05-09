@@ -373,33 +373,38 @@ pub fn stop_daemon() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    // Serialise tests that mutate CST_DATA_DIR to prevent parallel-test UB.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_write_pending_switch_normal_path() {
         let dir = TempDir::new().unwrap();
-        std::env::set_var("CST_DATA_DIR", dir.path().to_str().unwrap());
-        write_pending_switch("work", "backend").unwrap();
-        let content =
-            std::fs::read_to_string(dir.path().join("pending-switch")).unwrap();
+        let _guard = ENV_LOCK.lock().unwrap();
+        // SAFETY: we hold ENV_LOCK.
+        unsafe { std::env::set_var("CST_DATA_DIR", dir.path().to_str().unwrap()) }
+        let result = write_pending_switch("work", "backend");
+        let content = std::fs::read_to_string(dir.path().join("pending-switch")).ok();
+        unsafe { std::env::remove_var("CST_DATA_DIR") }
+        result.unwrap();
+        let content = content.unwrap();
         assert!(content.contains("CST_CURRENT='work:backend'"));
         assert!(content.contains("CLAUDE_CONFIG_DIR='"));
-        // No unescaped double quotes in the output
         assert!(!content.contains('"'), "should use single-quoted values");
-        std::env::remove_var("CST_DATA_DIR");
     }
 
     #[test]
     fn test_write_pending_switch_no_injection_via_path() {
-        // Even if the data dir path somehow contained a single quote, it should be escaped
         let dir = TempDir::new().unwrap();
-        std::env::set_var("CST_DATA_DIR", dir.path().to_str().unwrap());
-        // Profile/session names are safe by validate_name; we just verify the file is well-formed
-        write_pending_switch("my-profile", "default").unwrap();
-        let content =
-            std::fs::read_to_string(dir.path().join("pending-switch")).unwrap();
-        // Must start with export and use single-quoted assignment
-        assert!(content.starts_with("export CST_CURRENT='"));
-        std::env::remove_var("CST_DATA_DIR");
+        let _guard = ENV_LOCK.lock().unwrap();
+        // SAFETY: we hold ENV_LOCK.
+        unsafe { std::env::set_var("CST_DATA_DIR", dir.path().to_str().unwrap()) }
+        let result = write_pending_switch("my-profile", "default");
+        let content = std::fs::read_to_string(dir.path().join("pending-switch")).ok();
+        unsafe { std::env::remove_var("CST_DATA_DIR") }
+        result.unwrap();
+        assert!(content.unwrap().starts_with("export CST_CURRENT='"));
     }
 }
