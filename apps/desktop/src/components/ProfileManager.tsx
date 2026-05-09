@@ -6,6 +6,7 @@ export function ProfileManager() {
     useProfileStore();
   const [selected, setSelected] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
+  // Stores the name of the profile pending deletion. Cleared when selection changes.
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newAuth, setNewAuth] = useState("oauth");
@@ -42,7 +43,7 @@ export function ProfileManager() {
           <div
             key={p.name}
             className={`list-item${selected === p.name || (!selected && p.is_active) ? " selected" : ""}`}
-            onClick={() => setSelected(p.name)}
+            onClick={() => { setSelected(p.name); setConfirmDelete(null); }}
           >
             {p.is_active && <span>▶</span>}
             <span style={{ flex: 1 }}>{p.name}</span>
@@ -113,7 +114,6 @@ export function ProfileManager() {
                 <span style={{ fontSize: 12 }}>Delete "{selectedProfile.name}"?</span>
                 <button
                   className="btn btn-danger btn-sm"
-                  autoFocus
                   onClick={() => {
                     deleteProfile(selectedProfile.name).then(() => {
                       setSelected(null);
@@ -125,6 +125,7 @@ export function ProfileManager() {
                 </button>
                 <button
                   className="btn btn-sm"
+                  autoFocus
                   onClick={() => setConfirmDelete(null)}
                 >
                   Cancel
