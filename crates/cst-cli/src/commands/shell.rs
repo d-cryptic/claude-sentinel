@@ -2,7 +2,7 @@ use anyhow::Result;
 use cst_core::env_overlay::EnvOverlay;
 use cst_core::profile::Profile;
 use cst_core::shell::{env_exports, parse_profile_session, shell_init_code, ShellKind};
-use cst_core::{merge, platform};
+use cst_core::{merge, platform, validate_profile_name, validate_session_name};
 use std::collections::HashMap;
 
 pub fn shell_init(shell_arg: Option<String>) -> Result<()> {
@@ -19,6 +19,9 @@ pub fn shell_init(shell_arg: Option<String>) -> Result<()> {
 
 pub fn env_cmd(profile_session: &str) -> Result<()> {
     let (profile, session) = parse_profile_session(profile_session);
+    // Validate before using profile/session as path components or in shell exports.
+    validate_profile_name(&profile)?;
+    validate_session_name(&session)?;
     let shell = ShellKind::detect();
 
     let claude_config_dir = platform::claude_config_dir(&profile, &session);

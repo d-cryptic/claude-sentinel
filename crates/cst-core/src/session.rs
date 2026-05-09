@@ -185,9 +185,21 @@ pub fn setup_claude_dir(claude_dir: &Path, global_claude_dir: &Path) -> Result<(
     Ok(())
 }
 
-fn validate_session_name(name: &str) -> Result<()> {
+pub const MAX_SESSION_NAME_LEN: usize = 64;
+
+/// Validate a session name is a safe slug with bounded length.
+///
+/// Called at both create time and at CLI dispatch boundaries
+/// where user-supplied session names are used to construct file paths.
+pub fn validate_session_name(name: &str) -> Result<()> {
     if name.is_empty() {
         bail!("session name cannot be empty");
+    }
+    if name.len() > MAX_SESSION_NAME_LEN {
+        bail!(
+            "session name must be at most {MAX_SESSION_NAME_LEN} characters (got {})",
+            name.len()
+        );
     }
     if !name
         .chars()

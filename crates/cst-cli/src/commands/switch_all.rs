@@ -9,6 +9,7 @@ use cst_core::{
     platform,
     profile::ProfileManager,
     shell::{env_exports, ShellKind},
+    validate_profile_name, validate_session_name,
 };
 use std::collections::HashMap;
 
@@ -49,6 +50,11 @@ pub fn broadcast_switch_check(current: &str, already_applied_id: &str) -> Result
     let Some((to_profile, session)) = check_broadcast(current, already_applied_id) else {
         return Ok(());
     };
+
+    // Validate names before using them as path components or in shell exports.
+    // The broadcast file comes from disk and could be tampered with.
+    validate_profile_name(&to_profile)?;
+    validate_session_name(&session)?;
 
     // Load the broadcast to get its ID for setting CST_BROADCAST_ID
     let Some(broadcast) = BroadcastSwitch::load_active() else {

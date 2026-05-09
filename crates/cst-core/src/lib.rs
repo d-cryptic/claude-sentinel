@@ -23,5 +23,5 @@ pub mod templates;
 
 // Re-export top-level types
 pub use config::GlobalConfig;
-pub use profile::{Profile, ProfileManager};
-pub use session::{Session, SessionManager};
+pub use profile::{validate_profile_name, Profile, ProfileManager};
+pub use session::{validate_session_name, Session, SessionManager};

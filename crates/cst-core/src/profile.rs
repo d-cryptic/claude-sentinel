@@ -118,7 +118,7 @@ impl ProfileManager {
 
     /// Create a new profile. Fails if it already exists.
     pub fn create(&self, name: &str, auth_type: AuthType) -> Result<Profile> {
-        validate_name(name)?;
+        validate_profile_name(name)?;
         let dir = self.profile_dir(name);
         if dir.exists() {
             bail!("profile '{name}' already exists");
@@ -181,7 +181,7 @@ impl ProfileManager {
 
     /// Rename a profile.
     pub fn rename(&self, old: &str, new: &str) -> Result<()> {
-        validate_name(new)?;
+        validate_profile_name(new)?;
         let old_dir = self.profile_dir(old);
         let new_dir = self.profile_dir(new);
         if !old_dir.exists() {
@@ -200,7 +200,7 @@ impl ProfileManager {
 
     /// Clone a profile (copies directory, assigns new name).
     pub fn clone_profile(&self, src: &str, dst: &str) -> Result<Profile> {
-        validate_name(dst)?;
+        validate_profile_name(dst)?;
         let src_dir = self.profile_dir(src);
         let dst_dir = self.profile_dir(dst);
         if !src_dir.exists() {
@@ -224,10 +224,13 @@ impl ProfileManager {
     }
 }
 
-const MAX_PROFILE_NAME_LEN: usize = 64;
+pub(crate) const MAX_PROFILE_NAME_LEN: usize = 64;
 
 /// Validate that a profile name is a safe slug.
-fn validate_name(name: &str) -> Result<()> {
+///
+/// Called at both create/rename time and at CLI dispatch boundaries
+/// where user-supplied profile names are used to construct file paths.
+pub fn validate_profile_name(name: &str) -> Result<()> {
     if name.is_empty() {
         bail!("profile name cannot be empty");
     }
