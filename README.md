@@ -13,6 +13,7 @@
 - **Instant switching**: `cst use work:backend` switches context in milliseconds
 - **Session isolation**: Each session gets its own conversation history, settings, and MCP config
 - **Scheduled rotation**: Time-based profile activation ("work account 9am–6pm, personal otherwise")
+- **Account Pipeline**: Declare your own usage thresholds per profile. Advance to the next account automatically or with `cst next`.
 - **Per-session env overlays**: Different `ANTHROPIC_BASE_URL`, model, or settings per session
 - **3-layer settings merge**: Global base + profile overrides + session overrides
 - **Shared global config**: agents, rules, skills, commands auto-symlinked to all sessions
@@ -49,6 +50,11 @@ cst use work:backend            # named session within work profile
 cst auto-switch configure work  # set active_hours = "09:00-18:00"
 cst daemon start
 
+# Set up an account pipeline
+cst pipeline configure work   # set threshold + next account
+cst next                      # manually advance pipeline
+cst pipeline status           # show usage % and ETA
+
 # Check status
 cst status
 cst top                         # live dashboard
@@ -64,6 +70,7 @@ cst
 - [Architecture](docs/ARCHITECTURE.md)
 - [Auth Types](docs/AUTH.md)
 - [Profile Scheduling](docs/AUTO-SWITCH.md)
+- [Account Pipeline](docs/PIPELINE.md)
 
 ## License
 

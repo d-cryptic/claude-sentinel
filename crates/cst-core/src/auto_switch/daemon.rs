@@ -88,6 +88,17 @@ pub async fn run_daemon() -> Result<()> {
         // switch to its `fallback` profile when outside the active window.
         // This is intentionally a no-op until the time-based scheduler lands.
 
+        // Pipeline threshold check — time-based and user-declared usage gates only.
+        if !_paused {
+            if let Ok(cfg) = crate::GlobalConfig::load() {
+                if !cfg.current_profile.is_empty() {
+                    if let Err(e) = crate::pipeline::advance::tick(&cfg.current_profile) {
+                        tracing::warn!("pipeline tick error: {e}");
+                    }
+                }
+            }
+        }
+
         time::sleep(Duration::from_secs(30)).await;
     }
 }

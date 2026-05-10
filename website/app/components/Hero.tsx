@@ -36,8 +36,8 @@ export function Hero() {
 
           <p className="mt-8 font-mono text-sm sm:text-base text-gray-400 max-w-2xl mx-auto leading-relaxed">
             Manage all your Claude Code accounts, profiles, and sessions in one
-            place. Keep work, personal, and client projects completely isolated
-            &mdash; switch context with a single command.
+            place. Build a pipeline between accounts &mdash; switch context
+            with a single command or let the daemon advance automatically.
           </p>
 
           <div className="mt-10 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4">

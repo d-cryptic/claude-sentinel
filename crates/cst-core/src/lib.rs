@@ -13,6 +13,7 @@ pub mod history_parser;
 pub mod hooks;
 pub mod mcp;
 pub mod merge;
+pub mod pipeline;
 pub mod platform;
 pub mod profile;
 pub mod session;

@@ -1,5 +1,7 @@
 # Profile Scheduling & Automatic Context Switching
 
+> For usage-based account switching, see [PIPELINE.md](PIPELINE.md).
+
 > **Disclaimer:** Claude Sentinel is an independent, open-source tool. It is not affiliated with, endorsed by, or associated with Anthropic PBC. "Claude" and "Claude Code" are trademarks of Anthropic PBC.
 
 The Claude Sentinel daemon enables **time-based automatic profile switching** — for example, activating your work account during business hours and your personal account in the evenings.

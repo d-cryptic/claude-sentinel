@@ -216,6 +216,15 @@ enum Commands {
     /// Open the interactive TUI.
     Tui,
 
+    /// Advance the current profile pipeline to its configured next profile.
+    Next,
+
+    /// Account pipeline management.
+    Pipeline {
+        #[command(subcommand)]
+        action: PipelineCommands,
+    },
+
     /// First-run setup wizard.
     Init {
         /// Accept all defaults without prompting.
@@ -276,6 +285,14 @@ enum TeamCommands {
     },
     /// Show sync status.
     Status,
+}
+
+#[derive(Subcommand)]
+enum PipelineCommands {
+    /// Show pipeline status for current (or given) profile.
+    Status { profile: Option<String> },
+    /// Interactively create or edit pipeline.toml for a profile.
+    Configure { profile: String },
 }
 
 #[derive(Subcommand)]
@@ -387,6 +404,11 @@ async fn main() -> Result<()> {
             TeamCommands::Push => commands::team::push(),
             TeamCommands::Pull { strategy } => commands::team::pull(strategy),
             TeamCommands::Status => commands::team::status(),
+        },
+        Some(Commands::Next) => commands::pipeline::next(),
+        Some(Commands::Pipeline { action }) => match action {
+            PipelineCommands::Status { profile } => commands::pipeline::status(profile),
+            PipelineCommands::Configure { profile } => commands::pipeline::configure(&profile),
         },
         Some(Commands::Templates) => commands::templates::list(),
         Some(Commands::Init {

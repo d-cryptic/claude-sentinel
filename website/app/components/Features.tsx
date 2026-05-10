@@ -146,8 +146,8 @@ const features: {
     icon: "profile",
   },
   {
-    title: "SCHEDULED SWITCHING",
-    desc: "Background daemon activates profiles on a time schedule — work account 9–6, personal after hours.",
+    title: "ACCOUNT PIPELINE",
+    desc: "Declare a sequence of profiles with your own usage thresholds. Advance automatically or with `cst next`.",
     icon: "daemon",
   },
   {

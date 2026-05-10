@@ -10,7 +10,7 @@ export function AnnouncementBanner() {
         <span aria-hidden="true" className="text-magenta">
           &gt;
         </span>
-        <span className="hidden sm:inline">_ CLAUDE SENTINEL IS NOW OPEN SOURCE — STAR ON GITHUB</span>
+        <span className="hidden sm:inline">_ ACCOUNT PIPELINE IS LIVE — STAR US ON GITHUB</span>
         <span className="sm:hidden">_ STAR ON GITHUB</span>
         <span aria-hidden="true" className="text-cyan">
           [&uarr;]

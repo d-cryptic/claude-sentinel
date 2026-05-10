@@ -13,9 +13,9 @@ const steps = [
   },
   {
     n: "03",
-    title: "SWITCH INSTANTLY",
-    desc: "Jump to any profile or session — or open the live TUI.",
-    cmd: "cst use work:backend",
+    title: "BUILD YOUR PIPELINE",
+    desc: "Declare thresholds. The daemon advances to the next account automatically — or run `cst next` yourself.",
+    cmd: "cst pipeline configure work",
   },
 ];
 

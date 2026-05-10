@@ -1,6 +1,6 @@
 const stats = [
   { value: "5X", label: "FASTER CONTEXT SWITCHING" },
-  { value: "∞", label: "ACCOUNTS SUPPORTED" },
+  { value: "∞", label: "PIPELINE STAGES" },
   { value: "100%", label: "CLAUDE CODE COMPATIBLE" },
 ];
 

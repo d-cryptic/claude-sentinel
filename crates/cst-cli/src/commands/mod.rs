@@ -6,6 +6,7 @@ pub mod history;
 pub mod init;
 pub mod integrations;
 pub mod list;
+pub mod pipeline;
 pub mod profile;
 pub mod quota;
 pub mod run;
